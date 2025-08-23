@@ -54,11 +54,22 @@ class ConfigManager:
         self.config['mqtt_topic'] = topic or f"sensdot/{self.get_device_id()}"
         return self._save_config()
     
-    def set_advanced_config(self, sleep_interval=60, sensor_interval=30, debug_mode=False):
+    def set_device_names(self, device_name="", mqtt_name=""):
+        """Set device and MQTT names for identification"""
+        # Use defaults if not provided
+        default_device_name = f"SensDot-{self.get_device_id()[-4:]}"
+        default_mqtt_name = f"sensdot_{self.get_device_id()[-4:]}"
+        
+        self.config['device_name'] = device_name or default_device_name
+        self.config['mqtt_name'] = mqtt_name or default_mqtt_name
+        return self._save_config()
+    
+    def set_advanced_config(self, sleep_interval=60, sensor_interval=30, debug_mode=False, mqtt_discovery=True):
         """Set advanced configuration parameters"""
         self.config['sleep_interval'] = sleep_interval  # Deep sleep duration in seconds
         self.config['sensor_interval'] = sensor_interval  # Sensor reading interval in seconds
         self.config['debug_mode'] = debug_mode  # Enable debug output
+        self.config['mqtt_discovery'] = mqtt_discovery  # Enable MQTT Discovery for Home Assistant
         return self._save_config()
     
     def get_wifi_config(self):
@@ -83,7 +94,16 @@ class ConfigManager:
         return {
             'sleep_interval': self.config.get('sleep_interval', 60),
             'sensor_interval': self.config.get('sensor_interval', 30), 
-            'debug_mode': self.config.get('debug_mode', False)
+            'debug_mode': self.config.get('debug_mode', False),
+            'mqtt_discovery': self.config.get('mqtt_discovery', True)
+        }
+    
+    def get_device_names(self):
+        """Get device and MQTT names"""
+        device_id_short = self.get_device_id()[-4:]
+        return {
+            'device_name': self.config.get('device_name', f"SensDot-{device_id_short}"),
+            'mqtt_name': self.config.get('mqtt_name', f"sensdot_{device_id_short}")
         }
     
     def get_device_id(self):
@@ -100,6 +120,16 @@ class ConfigManager:
             os.remove(self.CONFIG_FILE)
         except OSError:
             pass  # File doesn't exist
+    
+    def enable_debug_mode(self):
+        """Enable debug mode - for developers only, not exposed in web UI"""
+        self.config['debug_mode'] = True
+        return self._save_config()
+    
+    def disable_debug_mode(self):
+        """Disable debug mode"""
+        self.config['debug_mode'] = False
+        return self._save_config()
     
     def get_all_config(self):
         """Get all configuration for display/debugging"""

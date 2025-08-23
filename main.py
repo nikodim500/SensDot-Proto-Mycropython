@@ -54,6 +54,15 @@ def main_cycle(config_manager):
         # User can reconfigure if needed via reset button
     else:
         print("MQTT connected successfully")
+        
+        # Publish MQTT Discovery configuration for Home Assistant (if enabled)
+        advanced_config = config_manager.get_advanced_config()
+        if advanced_config['mqtt_discovery']:
+            print("Publishing MQTT Discovery configuration...")
+            mqtt.publish_discovery()
+        else:
+            print("MQTT Discovery disabled")
+        
         # Publish initial status
         mqtt.publish_status()
     

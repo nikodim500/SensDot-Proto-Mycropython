@@ -54,6 +54,7 @@ class SensDotMQTT:
                 return False
         
         mqtt_config = self.config_manager.get_mqtt_config()
+        device_names = self.config_manager.get_device_names()
         broker = mqtt_config['broker']
         port = mqtt_config['port']
         username = mqtt_config['username']
@@ -63,12 +64,15 @@ class SensDotMQTT:
             print("Error: No MQTT broker configured")
             return False
         
-        client_id = f"sensdot_{self.config_manager.get_device_id()}"
+        # Use custom MQTT name for client ID, with fallback to device ID
+        mqtt_name = device_names['mqtt_name']
+        if not mqtt_name:
+            mqtt_name = f"sensdot_{self.config_manager.get_device_id()[-4:]}"
         
         try:
-            print(f"Connecting to MQTT broker: {broker}:{port}")
+            print(f"Connecting to MQTT: {broker}:{port} as {mqtt_name}")
             self.client = MQTTClient(
-                client_id=client_id,
+                client_id=mqtt_name,
                 server=broker,
                 port=port,
                 user=username if username else None,
@@ -78,13 +82,12 @@ class SensDotMQTT:
             
             self.client.connect()
             self.connected = True
-            print("MQTT connected successfully")
+            print("MQTT connected")
             
-            # Subscribe to device command topic
-            command_topic = f"{mqtt_config['topic']}/commands"
+            # Subscribe to device command topic using custom MQTT name
+            command_topic = f"{mqtt_name}/commands"
             self.client.set_callback(self._message_callback)
             self.client.subscribe(command_topic)
-            print(f"Subscribed to: {command_topic}")
             
             return True
             
@@ -119,11 +122,18 @@ class SensDotMQTT:
         
         try:
             mqtt_config = self.config_manager.get_mqtt_config()
-            topic = f"{mqtt_config['topic']}/data"
+            device_names = self.config_manager.get_device_names()
+            mqtt_name = device_names['mqtt_name']
+            if not mqtt_name:
+                mqtt_name = f"sensdot_{self.config_manager.get_device_id()[-4:]}"
+                
+            topic = f"{mqtt_name}/data"
             
-            # Add device metadata
+            # Add device metadata with custom names
             payload = {
                 "device_id": self.config_manager.get_device_id(),
+                "device_name": device_names['device_name'],
+                "mqtt_name": mqtt_name,
                 "timestamp": time.time(),
                 "data": sensor_data
             }
@@ -138,6 +148,89 @@ class SensDotMQTT:
             self.connected = False
             return False
     
+    def publish_discovery(self):
+        """Publish MQTT Discovery configuration for Home Assistant"""
+        if not self.connected:
+            print("MQTT not connected, cannot publish discovery")
+            return False
+        
+        try:
+            device_names = self.config_manager.get_device_names()
+            device_id = self.config_manager.get_device_id()
+            mqtt_name = device_names['mqtt_name']
+            device_name = device_names['device_name']
+            
+            # Fallback to defaults if not set
+            if not mqtt_name:
+                mqtt_name = f"sensdot_{device_id[-4:]}"
+            if not device_name:
+                device_name = f"SensDot-{device_id[-4:]}"
+            
+            # Base device information for all entities
+            device_info = {
+                "identifiers": [device_id],
+                "name": device_name,
+                "model": "SensDot Proto",
+                "manufacturer": "SensDot",
+                "sw_version": "1.0.0"
+            }
+            
+            print(f"Device info: {device_name} (ID: {device_id})")
+            
+            # Temperature sensor discovery - use safe approach
+            temp_config = {
+                "name": "Temperature",
+                "unique_id": mqtt_name + "_temperature", 
+                "state_topic": mqtt_name + "/data",
+                "value_template": "{{ value_json.data.temperature }}",
+                "device_class": "temperature",
+                "state_class": "measurement"
+            }
+            
+            # Test publish just the temperature sensor first
+            topic = "homeassistant/sensor/" + mqtt_name + "_temperature/config"
+            
+            # Create simple JSON without problematic degree symbol for now
+            json_parts = []
+            json_parts.append('{"name":"' + temp_config['name'] + '"')
+            json_parts.append(',"unique_id":"' + temp_config['unique_id'] + '"') 
+            json_parts.append(',"state_topic":"' + temp_config['state_topic'] + '"')
+            json_parts.append(',"value_template":"' + temp_config['value_template'] + '"')
+            json_parts.append(',"device_class":"' + temp_config['device_class'] + '"')
+            json_parts.append(',"state_class":"' + temp_config['state_class'] + '"}')
+            
+            payload = ''.join(json_parts)
+            
+            print(f"Testing discovery publish to: {topic}")
+            print(f"Simple JSON payload: {payload}")
+            print(f"Payload length: {len(payload)} chars")
+            
+            # Try to publish with error handling
+            try:
+                self.client.publish(topic, payload, retain=True)
+                print("Discovery publish successful")
+                
+                # Wait a moment to ensure delivery
+                import time
+                time.sleep(1)
+                
+                # Check if still connected
+                if self.connected:
+                    print("MQTT connection stable after discovery publish")
+                else:
+                    print("MQTT connection lost after discovery publish")
+                    
+                return True
+                
+            except Exception as e:
+                print(f"Discovery publish failed: {e}")
+                self.connected = False
+                return False
+                
+        except Exception as e:
+            print(f"Discovery setup error: {e}")
+            return False
+    
     def publish_status(self):
         """Publish device status"""
         if not self.connected:
@@ -145,12 +238,31 @@ class SensDotMQTT:
         
         try:
             mqtt_config = self.config_manager.get_mqtt_config()
-            topic = f"{mqtt_config['topic']}/status"
+            device_names = self.config_manager.get_device_names()
+            mqtt_name = device_names['mqtt_name']
+            if not mqtt_name:
+                mqtt_name = f"sensdot_{self.config_manager.get_device_id()[-4:]}"
+                
+            topic = f"{mqtt_name}/status"
+            
+            # Get WiFi signal strength
+            wifi_rssi = None
+            try:
+                import network
+                sta = network.WLAN(network.STA_IF)
+                if sta.isconnected():
+                    # Get signal strength (implementation varies by platform)
+                    wifi_rssi = sta.status('rssi') if hasattr(sta, 'status') else None
+            except:
+                pass
             
             status = {
                 "device_id": self.config_manager.get_device_id(),
+                "device_name": device_names['device_name'],
+                "mqtt_name": mqtt_name,
                 "timestamp": time.time(),
                 "wifi_ip": self.wifi.ifconfig()[0] if self.wifi.isconnected() else None,
+                "wifi_rssi": wifi_rssi,
                 "free_memory": self._get_free_memory(),
                 "uptime": time.ticks_ms() // 1000
             }
@@ -160,8 +272,17 @@ class SensDotMQTT:
             print(f"Status published: {json_payload}")
             return True
             
+        except OSError as e:
+            if e.args[0] == 104:  # ECONNRESET
+                print("MQTT disconnected during status publish")
+                self.connected = False
+                return False
+            else:
+                print(f"Status publish error: {e}")
+                return False
         except Exception as e:
             print(f"Status publish error: {e}")
+            self.connected = False
             return False
     
     def _get_free_memory(self):
@@ -178,8 +299,20 @@ class SensDotMQTT:
         if self.connected and self.client:
             try:
                 self.client.check_msg()
+            except OSError as e:
+                if e.args[0] == 104:  # ECONNRESET
+                    print("MQTT disconnected, reconnecting...")
+                    self.connected = False
+                    # Try to reconnect
+                    if self.connect_mqtt():
+                        print("MQTT reconnected")
+                    else:
+                        print("MQTT reconnection failed")
+                else:
+                    print(f"MQTT error: {e}")
+                    self.connected = False
             except Exception as e:
-                print(f"MQTT check messages error: {e}")
+                print(f"MQTT error: {e}")
                 self.connected = False
     
     def disconnect(self):

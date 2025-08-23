@@ -127,26 +127,48 @@ class WiFiConfigServer:
                 if 'wifi_ssid' in params and 'mqtt_broker' in params:
                     print("Saving configuration...")
                     
+                    # Validate and sanitize MQTT name
+                    mqtt_name = params.get('mqtt_name', '')
+                    if mqtt_name:
+                        # Remove invalid characters from MQTT name (only keep letters, numbers, underscore, dash)
+                        sanitized = ''
+                        for char in str(mqtt_name):
+                            if (char >= 'a' and char <= 'z') or (char >= 'A' and char <= 'Z') or (char >= '0' and char <= '9') or char == '_' or char == '-':
+                                sanitized += char
+                        mqtt_name = sanitized
+                        if not mqtt_name:
+                            mqtt_name = f"sensdot_{self.config_manager.get_device_id()[-4:]}"
+                    else:
+                        mqtt_name = f"sensdot_{self.config_manager.get_device_id()[-4:]}"
+                    
+                    # Save device names
+                    self.config_manager.set_device_names(
+                        params.get('device_name', ''),
+                        mqtt_name
+                    )
+                    
                     # Save WiFi config
                     self.config_manager.set_wifi_config(
                         params.get('wifi_ssid', ''),
                         params.get('wifi_password', '')
                     )
                     
-                    # Save MQTT config
+                    # Save MQTT config  
                     self.config_manager.set_mqtt_config(
                         params.get('mqtt_broker', ''),
                         int(params.get('mqtt_port', 1883)),
-                        params.get('mqtt_topic', 'sensdot'),
                         params.get('mqtt_username', ''),
-                        params.get('mqtt_password', '')
+                        params.get('mqtt_password', ''),
+                        mqtt_name  # Use mqtt_name as the topic base
                     )
                     
-                    # Save advanced config
+                    # Save advanced config (debug_mode kept at default/current value)
+                    current_debug = self.config_manager.get_advanced_config()['debug_mode']
                     self.config_manager.set_advanced_config(
                         int(params.get('sleep_interval', 60)),
                         int(params.get('sensor_interval', 30)),
-                        params.get('debug_mode') == 'on'
+                        current_debug,  # Keep current debug setting
+                        params.get('mqtt_discovery') == 'on'
                     )
                     
                     # Send success response
@@ -167,6 +189,13 @@ class WiFiConfigServer:
 
     def _send_config_form(self, conn):
         """Send the enhanced configuration form with password toggles"""
+        # Get current configuration to pre-populate fields
+        device_names = self.config_manager.get_device_names()
+        wifi_config = self.config_manager.get_wifi_config()
+        mqtt_config = self.config_manager.get_mqtt_config()
+        advanced_config = self.config_manager.get_advanced_config()
+        
+        # Build HTML with dynamic values
         html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -338,15 +367,30 @@ class WiFiConfigServer:
         <div class="form-container">
             <form method="POST" action="/">
                 <div class="section">
+                    <div class="section-title">Device Identity</div>
+                    <div class="input-group">
+                        <label for="device_name">Device Name (for Home Assistant)</label>
+                        <input type="text" name="device_name" id="device_name" placeholder="e.g., Living Room Sensor" value=\"""" + device_names['device_name'] + """\">
+                    </div>
+                    <div class="input-group">
+                        <label for="mqtt_name">MQTT Name (for topics)</label>
+                        <input type="text" name="mqtt_name" id="mqtt_name" placeholder="e.g., living_room_sensor" value=\"""" + device_names['mqtt_name'] + """\" pattern="[a-zA-Z0-9_-]+" title="Only letters, numbers, underscores and dashes allowed" oninput="validateMqttName(this)">
+                        <div id="mqtt_name_error" style="color: #e74c3c; font-size: 12px; margin-top: 4px; display: none;">
+                            MQTT name can only contain letters, numbers, underscores (_) and dashes (-)
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
                     <div class="section-title">WiFi Settings</div>
                     <div class="input-group">
                         <label for="wifi_ssid">Network Name (SSID)</label>
-                        <input type="text" name="wifi_ssid" id="wifi_ssid" required>
+                        <input type="text" name="wifi_ssid" id="wifi_ssid" value=\"""" + wifi_config['ssid'] + """\" required>
                     </div>
                     <div class="input-group">
                         <label for="wifi_password">Password</label>
                         <div class="password-container">
-                            <input type="password" name="wifi_password" id="wifi_password">
+                            <input type="password" name="wifi_password" id="wifi_password" value=\"""" + wifi_config['password'] + """\">
                             <button type="button" class="toggle-btn" onclick="togglePassword('wifi_password', this)">Show</button>
                         </div>
                     </div>
@@ -356,24 +400,20 @@ class WiFiConfigServer:
                     <div class="section-title">MQTT Settings</div>
                     <div class="input-group">
                         <label for="mqtt_broker">Broker Address</label>
-                        <input type="text" name="mqtt_broker" id="mqtt_broker" required>
+                        <input type="text" name="mqtt_broker" id="mqtt_broker" value=\"""" + mqtt_config['broker'] + """\" required>
                     </div>
                     <div class="input-group">
                         <label for="mqtt_port">Port</label>
-                        <input type="number" name="mqtt_port" id="mqtt_port" value="1883">
-                    </div>
-                    <div class="input-group">
-                        <label for="mqtt_topic">Topic Prefix</label>
-                        <input type="text" name="mqtt_topic" id="mqtt_topic" value="sensdot">
+                        <input type="number" name="mqtt_port" id="mqtt_port" value=\"""" + str(mqtt_config['port']) + """\">
                     </div>
                     <div class="input-group">
                         <label for="mqtt_username">Username (optional)</label>
-                        <input type="text" name="mqtt_username" id="mqtt_username">
+                        <input type="text" name="mqtt_username" id="mqtt_username" value=\"""" + mqtt_config['username'] + """\">
                     </div>
                     <div class="input-group">
                         <label for="mqtt_password">Password (optional)</label>
                         <div class="password-container">
-                            <input type="password" name="mqtt_password" id="mqtt_password">
+                            <input type="password" name="mqtt_password" id="mqtt_password" value=\"""" + mqtt_config['password'] + """\">
                             <button type="button" class="toggle-btn" onclick="togglePassword('mqtt_password', this)">Show</button>
                         </div>
                     </div>
@@ -383,16 +423,16 @@ class WiFiConfigServer:
                     <div class="section-title">Advanced Settings</div>
                     <div class="input-group">
                         <label for="sleep_interval">Sleep Interval (seconds)</label>
-                        <input type="number" name="sleep_interval" id="sleep_interval" value="60" min="10">
+                        <input type="number" name="sleep_interval" id="sleep_interval" value=\"""" + str(advanced_config['sleep_interval']) + """\" min="10">
                     </div>
                     <div class="input-group">
                         <label for="sensor_interval">Sensor Reading Interval (seconds)</label>
-                        <input type="number" name="sensor_interval" id="sensor_interval" value="30" min="5">
+                        <input type="number" name="sensor_interval" id="sensor_interval" value=\"""" + str(advanced_config['sensor_interval']) + """\" min="5">
                     </div>
                     <div class="input-group">
                         <div class="checkbox-group">
-                            <input type="checkbox" name="debug_mode" id="debug_mode">
-                            <label for="debug_mode">Enable Debug Mode</label>
+                            <input type="checkbox" name="mqtt_discovery" id="mqtt_discovery" """ + ('checked' if advanced_config['mqtt_discovery'] else '') + """>
+                            <label for="mqtt_discovery">Enable MQTT Discovery (Home Assistant auto-detection)</label>
                         </div>
                     </div>
                 </div>
@@ -402,10 +442,15 @@ class WiFiConfigServer:
             
             <div class="info">
                 <strong>Instructions:</strong><br>
-                1. Enter your WiFi network details<br>
-                2. Configure MQTT broker settings<br>
-                3. Adjust timing intervals as needed<br>
-                4. Click Save to restart the device
+                1. <strong>Device Name:</strong> Friendly name shown in Home Assistant (e.g., "Living Room Sensor")<br>
+                2. <strong>MQTT Name:</strong> Used for MQTT topics - will create topics like "your_name/data" and "your_name/status"<br>
+                3. Enter your WiFi network details<br>
+                4. Configure MQTT broker settings<br>
+                5. Adjust timing intervals as needed<br>
+                6. <strong>MQTT Discovery:</strong> Enable for automatic Home Assistant detection<br>
+                7. Click Save to restart the device<br><br>
+                <strong>Example:</strong> If MQTT Name is "kitchen_sensor", data will be published to "kitchen_sensor/data"<br>
+                <strong>Home Assistant:</strong> With MQTT Discovery enabled, sensors will appear automatically
             </div>
         </div>
     </div>
@@ -421,6 +466,37 @@ class WiFiConfigServer:
                 button.textContent = 'Show';
             }
         }
+        
+        function validateMqttName(input) {
+            const value = input.value;
+            const errorDiv = document.getElementById('mqtt_name_error');
+            const submitBtn = document.querySelector('.submit-btn');
+            
+            // Check if value contains only allowed characters
+            const validPattern = /^[a-zA-Z0-9_-]*$/;
+            
+            if (value && !validPattern.test(value)) {
+                errorDiv.style.display = 'block';
+                input.style.borderColor = '#e74c3c';
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.6';
+                submitBtn.style.cursor = 'not-allowed';
+            } else {
+                errorDiv.style.display = 'none';
+                input.style.borderColor = value ? '#4CAF50' : '#e0e0e0';
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = 'pointer';
+            }
+        }
+        
+        // Validate on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const mqttNameInput = document.getElementById('mqtt_name');
+            if (mqttNameInput.value) {
+                validateMqttName(mqttNameInput);
+            }
+        });
     </script>
 </body>
 </html>"""
@@ -447,9 +523,10 @@ class WiFiConfigServer:
 <body>
     <div class="success">
         <h1>Configuration Saved!</h1>
-        <p>Your SensDot device is restarting...</p>
+        <p>Your SensDot device is restarting and will connect to your WiFi network...</p>
         <div class="spinner"></div>
-        <p>The device will now connect to your WiFi network and start operating.</p>
+        <p>The device will start operating with your new settings.</p>
+        <p><strong>You can now close this page.</strong></p>
     </div>
 </body>
 </html>"""
