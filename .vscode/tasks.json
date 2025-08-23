@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MPY: REPL (interactive)",
+      "type": "process",
+      "command": "mpremote",
+      "args": ["connect", "port:COM3", "repl"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MPY: Run main.py (RAM)",
+      "type": "process",
+      "command": "mpremote",
+      "args": ["connect", "port:COM3", "run", "main.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MPY: Sync ./src → device",
+      "type": "process",
+      "command": "mpremote",
+      "args": ["connect", "port:COM3", "fs", "cp", "-r", "src", ":"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
