@@ -42,7 +42,7 @@ Optional: Create `lib/` directory for future sensor libraries.
 ### 3. First Boot Configuration
 1. Reset/power on the device
 2. Device will create WiFi AP: `SensDot-XXXX` (XXXX = last 4 chars of device ID)
-3. Connect to WiFi AP with password: `sensdot123`
+3. Connect to WiFi AP (open network, no password required)
 4. Navigate to `http://192.168.4.1` in your browser
 5. Configure WiFi and MQTT settings through web interface
 6. Device will restart and connect to your network
@@ -123,7 +123,7 @@ ampy --port COM3 put lib/wifi_config.py lib/wifi_config.py
 
 ### Can't connect to WiFi AP
 - Verify AP SSID format: `SensDot-XXXX`
-- Default password: `sensdot123`
+- AP is configured as open network (no password required)
 - Check device is in configuration mode
 
 ### Configuration not saving
