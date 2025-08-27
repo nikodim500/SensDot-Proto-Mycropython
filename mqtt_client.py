@@ -2,7 +2,18 @@
 # MQTT client for SensDot device communication
 
 import time
-from umqtt.simple import MQTTClient
+try:
+    from umqtt.robust import MQTTClient
+    print("Loaded umqtt.robust")
+except ImportError as e:
+    print(f"umqtt.robust not available: {e}")
+    try:
+        from umqtt.simple import MQTTClient
+        print("Loaded umqtt.simple")
+    except ImportError as e2:
+        print(f"umqtt.simple not available: {e2}")
+        print("Error: No MQTT client available")
+        raise e2
 import network
 import json
 
@@ -129,12 +140,21 @@ class SensDotMQTT:
                 
             topic = f"{mqtt_name}/data"
             
-            # Add device metadata with custom names
+            # Get WiFi signal strength for publishing
+            wifi_rssi = None
+            try:
+                if self.wifi.isconnected():
+                    wifi_rssi = self.wifi.status('rssi') if hasattr(self.wifi, 'status') else -50
+            except:
+                wifi_rssi = -50  # Default value
+            
+            # Create payload compatible with Home Assistant discovery value templates
             payload = {
                 "device_id": self.config_manager.get_device_id(),
                 "device_name": device_names['device_name'],
                 "mqtt_name": mqtt_name,
                 "timestamp": time.time(),
+                "wifi_rssi": wifi_rssi,
                 "data": sensor_data
             }
             
@@ -155,6 +175,9 @@ class SensDotMQTT:
             return False
         
         try:
+            import ubinascii
+            import machine
+            
             device_names = self.config_manager.get_device_names()
             device_id = self.config_manager.get_device_id()
             mqtt_name = device_names['mqtt_name']
@@ -166,69 +189,143 @@ class SensDotMQTT:
             if not device_name:
                 device_name = f"SensDot-{device_id[-4:]}"
             
-            # Base device information for all entities
+            print(f"Publishing discovery for: {device_name} (MQTT: {mqtt_name})")
+            
+            # Get unique hardware ID for identifiers
+            unique_id = ubinascii.hexlify(machine.unique_id()).decode()
+            
+            # Single device information for ALL entities - this groups them together
             device_info = {
-                "identifiers": [device_id],
+                "identifiers": [mqtt_name],  # Use mqtt_name as device identifier
                 "name": device_name,
-                "model": "SensDot Proto",
+                "model": "ESP32-C3 SuperMini", 
                 "manufacturer": "SensDot",
                 "sw_version": "1.0.0"
             }
             
-            print(f"Device info: {device_name} (ID: {device_id})")
-            
-            # Temperature sensor discovery - use safe approach
+            # Temperature sensor discovery
             temp_config = {
-                "name": "Temperature",
-                "unique_id": mqtt_name + "_temperature", 
+                "name": device_name + " Temperature",
+                "unique_id": mqtt_name + "_temperature",
+                "device_class": "temperature",
+                "unit_of_measurement": "C",  # Use simple C to avoid encoding issues
+                "state_class": "measurement",
                 "state_topic": mqtt_name + "/data",
                 "value_template": "{{ value_json.data.temperature }}",
-                "device_class": "temperature",
-                "state_class": "measurement"
+                "device": {
+                    "identifiers": [mqtt_name],
+                    "name": device_name,
+                    "model": "ESP32-C3 SuperMini",
+                    "manufacturer": "SensDot",
+                    "sw_version": "1.0.0"
+                }
             }
             
-            # Test publish just the temperature sensor first
-            topic = "homeassistant/sensor/" + mqtt_name + "_temperature/config"
+            temp_topic = "homeassistant/sensor/" + mqtt_name + "_temperature/config"
             
-            # Create simple JSON without problematic degree symbol for now
-            json_parts = []
-            json_parts.append('{"name":"' + temp_config['name'] + '"')
-            json_parts.append(',"unique_id":"' + temp_config['unique_id'] + '"') 
-            json_parts.append(',"state_topic":"' + temp_config['state_topic'] + '"')
-            json_parts.append(',"value_template":"' + temp_config['value_template'] + '"')
-            json_parts.append(',"device_class":"' + temp_config['device_class'] + '"')
-            json_parts.append(',"state_class":"' + temp_config['state_class'] + '"}')
-            
-            payload = ''.join(json_parts)
-            
-            print(f"Testing discovery publish to: {topic}")
-            print(f"Simple JSON payload: {payload}")
-            print(f"Payload length: {len(payload)} chars")
-            
-            # Try to publish with error handling
             try:
-                self.client.publish(topic, payload, retain=True)
-                print("Discovery publish successful")
+                # Method 1: Use \\u00B0 Unicode escape for degree symbol
+                temp_json = '{"name":"' + device_name + ' Temperature",'
+                temp_json += '"unique_id":"' + mqtt_name + '_temperature",'
+                temp_json += '"device_class":"temperature",'
+                temp_json += '"unit_of_measurement":"\\u00B0C",'  # Unicode escape for °C
+                temp_json += '"state_class":"measurement",'
+                temp_json += '"state_topic":"' + mqtt_name + '/data",'
+                temp_json += '"value_template":"{{ value_json.data.temperature }}",'
+                temp_json += '"device":{"identifiers":["' + mqtt_name + '"],'
+                temp_json += '"name":"' + device_name + '",'
+                temp_json += '"model":"ESP32-C3 SuperMini",'
+                temp_json += '"manufacturer":"SensDot",'
+                temp_json += '"sw_version":"1.0.0"}}'
                 
-                # Wait a moment to ensure delivery
-                import time
-                time.sleep(1)
+                print(f"Unicode JSON length: {len(temp_json)} chars")
+                print(f"Unicode JSON: {temp_json}")
                 
-                # Check if still connected
-                if self.connected:
-                    print("MQTT connection stable after discovery publish")
-                else:
-                    print("MQTT connection lost after discovery publish")
-                    
-                return True
-                
+                # Publish with retain=True
+                self.client.publish(temp_topic, temp_json, retain=True)
+                print(f"Published temperature discovery: {temp_topic}")
             except Exception as e:
-                print(f"Discovery publish failed: {e}")
-                self.connected = False
-                return False
+                print(f"Error publishing temperature discovery: {e}")
                 
+                # Method 2: Fallback to bytes encoding if unicode fails
+                try:
+                    print("Trying bytes encoding fallback...")
+                    temp_json_bytes = b'{"name":"' + device_name.encode('utf-8') + b' Temperature",'
+                    temp_json_bytes += b'"unique_id":"' + mqtt_name.encode('utf-8') + b'_temperature",'
+                    temp_json_bytes += b'"device_class":"temperature",'
+                    temp_json_bytes += b'"unit_of_measurement":"\xc2\xb0C",'  # UTF-8 bytes for °C
+                    temp_json_bytes += b'"state_class":"measurement",'
+                    temp_json_bytes += b'"state_topic":"' + mqtt_name.encode('utf-8') + b'/data",'
+                    temp_json_bytes += b'"value_template":"{{ value_json.data.temperature }}",'
+                    temp_json_bytes += b'"device":{"identifiers":["' + mqtt_name.encode('utf-8') + b'"],'
+                    temp_json_bytes += b'"name":"' + device_name.encode('utf-8') + b'",'
+                    temp_json_bytes += b'"model":"ESP32-C3 SuperMini",'
+                    temp_json_bytes += b'"manufacturer":"SensDot",'
+                    temp_json_bytes += b'"sw_version":"1.0.0"}}'
+                    
+                    print(f"Bytes JSON length: {len(temp_json_bytes)} bytes")
+                    
+                    # Publish bytes directly
+                    self.client.publish(temp_topic, temp_json_bytes, retain=True)
+                    print(f"Published temperature discovery with bytes: {temp_topic}")
+                except Exception as e2:
+                    print(f"Bytes encoding also failed: {e2}")
+                    
+                    # Method 3: Final fallback to simple "C" unit
+                    try:
+                        print("Final fallback to simple C unit...")
+                        temp_json_simple = '{"name":"' + device_name + ' Temperature",'
+                        temp_json_simple += '"unique_id":"' + mqtt_name + '_temperature",'
+                        temp_json_simple += '"device_class":"temperature",'
+                        temp_json_simple += '"unit_of_measurement":"C",'  # Simple C without degree
+                        temp_json_simple += '"state_class":"measurement",'
+                        temp_json_simple += '"state_topic":"' + mqtt_name + '/data",'
+                        temp_json_simple += '"value_template":"{{ value_json.data.temperature }}",'
+                        temp_json_simple += '"device":{"identifiers":["' + mqtt_name + '"],'
+                        temp_json_simple += '"name":"' + device_name + '",'
+                        temp_json_simple += '"model":"ESP32-C3 SuperMini",'
+                        temp_json_simple += '"manufacturer":"SensDot",'
+                        temp_json_simple += '"sw_version":"1.0.0"}}'
+                        
+                        self.client.publish(temp_topic, temp_json_simple, retain=True)
+                        print(f"Published temperature discovery with simple C: {temp_topic}")
+                    except Exception as e3:
+                        print(f"All methods failed: {e3}")
+            
+            # Wait briefly between messages
+            time.sleep(2.0)
+            
+            # Humidity sensor discovery
+            humidity_topic = "homeassistant/sensor/" + mqtt_name + "_humidity/config"
+            
+            try:
+                humidity_json = '{"name":"' + device_name + ' Humidity",'
+                humidity_json += '"unique_id":"' + mqtt_name + '_humidity",'
+                humidity_json += '"device_class":"humidity",'
+                humidity_json += '"unit_of_measurement":"%",'
+                humidity_json += '"state_class":"measurement",'
+                humidity_json += '"state_topic":"' + mqtt_name + '/data",'
+                humidity_json += '"value_template":"{{ value_json.data.humidity }}",'
+                humidity_json += '"device":{"identifiers":["' + mqtt_name + '"],'
+                humidity_json += '"name":"' + device_name + '",'
+                humidity_json += '"model":"ESP32-C3 SuperMini",'
+                humidity_json += '"manufacturer":"SensDot",'
+                humidity_json += '"sw_version":"1.0.0"}}'
+                
+                print(f"Humidity JSON length: {len(humidity_json)} chars")
+                
+                self.client.publish(humidity_topic, humidity_json, retain=True)
+                print(f"Published humidity discovery: {humidity_topic}")
+            except Exception as e:
+                print(f"Error publishing humidity discovery: {e}")
+            
+            print("MQTT Discovery published successfully (temperature and humidity only)")
+            return True
+            
         except Exception as e:
-            print(f"Discovery setup error: {e}")
+            print(f"Discovery publish error: {e}")
+            import sys
+            sys.print_exception(e)
             return False
     
     def publish_status(self):

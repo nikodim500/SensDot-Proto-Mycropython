@@ -84,10 +84,11 @@ def main_cycle(config_manager):
                     print(f"Sensor reading #{sensor_count}")
                 
                 # TODO: Read actual sensors here
-                # Example sensor data structure:
+                # Example sensor data structure for BME280:
                 sensor_data = {
-                    "temperature": 25.5,  # TODO: Replace with actual sensor reading
-                    "humidity": 60.2,     # TODO: Replace with actual sensor reading
+                    "temperature": 25.5,  # TODO: Replace with BME280 temperature reading
+                    "humidity": 60.2,     # TODO: Replace with BME280 humidity reading  
+                    "pressure": 1013.25,  # TODO: Replace with BME280 pressure reading (hPa)
                     "battery": 3.7,       # TODO: Add battery monitoring
                     "iteration": sensor_count,
                     "sleep_interval": sleep_interval
