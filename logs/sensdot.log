@@ -1,0 +1,22 @@
+[004d19:35:54] INFO     SensDot Office: Logging system initialized on ESP32
+[004d19:35:54] WARN     SensDot Office: This is a warning message
+[004d19:35:54] ERROR    SensDot Office: This is an error message
+[004d19:35:54] INFO     SensDot Office: Device ID: 50787d47607c
+[004d19:35:54] INFO     SensDot Office: Sensor reading #0: temp=25.0°C, humidity=60.0%
+[004d19:35:56] INFO     SensDot Office: Sensor reading #1: temp=25.1°C, humidity=60.1%
+[004d19:35:57] INFO     SensDot Office: Sensor reading #2: temp=25.2°C, humidity=60.2%
+[004d19:35:58] INFO     SensDot Office: Sensor reading #3: temp=25.3°C, humidity=60.3%
+[004d19:35:59] INFO     SensDot Office: Sensor reading #4: temp=25.4°C, humidity=60.4%
+[004d19:36:00] ERROR    SensDot Office: Exception logging failed: local variable referenced before assignment
+[004d19:36:00] INFO     SensDot Office: Log stats: {'console_output': True, 'level': 'INFO', 'max_file_size': 10240, 'max_files': 3, 'log_file': 'logs/sensdot.log', 'current_size': 821}
+[004d19:39:04] INFO     SensDot Office: Logging system initialized on ESP32
+[004d19:39:04] WARN     SensDot Office: This is a warning message
+[004d19:39:04] ERROR    SensDot Office: This is an error message
+[004d19:39:04] INFO     SensDot Office: Device ID: 50787d47607c
+[004d19:39:04] INFO     SensDot Office: Sensor reading #0: temp=25.0°C, humidity=60.0%
+[004d19:39:05] INFO     SensDot Office: Sensor reading #1: temp=25.1°C, humidity=60.1%
+[004d19:39:06] INFO     SensDot Office: Sensor reading #2: temp=25.2°C, humidity=60.2%
+[004d19:39:07] INFO     SensDot Office: Sensor reading #3: temp=25.3°C, humidity=60.3%
+[004d19:39:08] INFO     SensDot Office: Sensor reading #4: temp=25.4°C, humidity=60.4%
+[004d19:39:09] ERROR    SensDot Office: Exception logging failed: local variable referenced before assignment
+[004d19:39:09] INFO     SensDot Office: Log stats: {'log_file': 'logs/sensdot.log', 'ends_with_newline': True, 'console_output': True, 'level': 'INFO', 'max_file_size': 10240, 'max_files': 3, 'current_size': 1828}

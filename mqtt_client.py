@@ -20,16 +20,25 @@ import json
 class SensDotMQTT:
     """MQTT client wrapper for SensDot device"""
     
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, logger=None):
         self.config_manager = config_manager
+        self.logger = logger
         self.client = None
         self.connected = False
         self.wifi = network.WLAN(network.STA_IF)
     
+    def _log(self, level, message):
+        """Internal logging method"""
+        if self.logger:
+            getattr(self.logger, level)(message)
+        else:
+            print(f"[{level.upper()}] {message}")
+    
     def connect_wifi(self):
         """Connect to WiFi network"""
         if self.wifi.isconnected():
-            print(f"Already connected to WiFi: {self.wifi.ifconfig()[0]}")
+            ip = self.wifi.ifconfig()[0]
+            self._log("info", f"Already connected to WiFi: {ip}")
             return True
         
         wifi_config = self.config_manager.get_wifi_config()
@@ -37,10 +46,10 @@ class SensDotMQTT:
         password = wifi_config['password']
         
         if not ssid:
-            print("Error: No WiFi SSID configured")
+            self._log("error", "No WiFi SSID configured")
             return False
         
-        print(f"Connecting to WiFi: {ssid}")
+        self._log("info", f"Connecting to WiFi: {ssid}")
         self.wifi.active(True)
         self.wifi.connect(ssid, password)
         
@@ -52,10 +61,11 @@ class SensDotMQTT:
             print(".", end="")
         
         if self.wifi.isconnected():
-            print(f"\nWiFi connected: {self.wifi.ifconfig()[0]}")
+            ip = self.wifi.ifconfig()[0]
+            self._log("info", f"WiFi connected: {ip}")
             return True
         else:
-            print("\nWiFi connection failed")
+            self._log("error", "WiFi connection failed")
             return False
     
     def connect_mqtt(self):
@@ -72,7 +82,7 @@ class SensDotMQTT:
         password = mqtt_config['password']
         
         if not broker:
-            print("Error: No MQTT broker configured")
+            self._log("error", "No MQTT broker configured")
             return False
         
         # Use custom MQTT name for client ID, with fallback to device ID
@@ -81,7 +91,7 @@ class SensDotMQTT:
             mqtt_name = f"sensdot_{self.config_manager.get_device_id()[-4:]}"
         
         try:
-            print(f"Connecting to MQTT: {broker}:{port} as {mqtt_name}")
+            self._log("info", f"Connecting to MQTT: {broker}:{port} as {mqtt_name}")
             self.client = MQTTClient(
                 client_id=mqtt_name,
                 server=broker,
@@ -93,17 +103,18 @@ class SensDotMQTT:
             
             self.client.connect()
             self.connected = True
-            print("MQTT connected")
+            self._log("info", "MQTT connected")
             
             # Subscribe to device command topic using custom MQTT name
             command_topic = f"{mqtt_name}/commands"
             self.client.set_callback(self._message_callback)
             self.client.subscribe(command_topic)
+            self._log("debug", f"Subscribed to command topic: {command_topic}")
             
             return True
             
         except Exception as e:
-            print(f"MQTT connection failed: {e}")
+            self._log("error", f"MQTT connection failed: {e}")
             self.connected = False
             return False
     
@@ -112,23 +123,28 @@ class SensDotMQTT:
         try:
             topic_str = topic.decode('utf-8')
             msg_str = msg.decode('utf-8')
-            print(f"Received message on {topic_str}: {msg_str}")
+            self._log("info", f"Received message on {topic_str}: {msg_str}")
             
             # Handle basic commands
             if msg_str.lower() == "status":
+                self._log("debug", "Status command received")
                 self.publish_status()
             elif msg_str.lower() == "restart":
-                print("Restart command received")
+                self._log("warn", "Restart command received")
                 import machine
                 machine.reset()
+            elif msg_str.lower() == "clear_logs":
+                self._log("info", "Clear logs command received")
+                if self.logger:
+                    self.logger.clear_logs()
             
         except Exception as e:
-            print(f"Message handling error: {e}")
+            self._log("error", f"Message handling error: {e}")
     
     def publish_data(self, sensor_data):
         """Publish sensor data to MQTT broker"""
         if not self.connected:
-            print("MQTT not connected")
+            self._log("warn", "MQTT not connected")
             return False
         
         try:
@@ -160,11 +176,11 @@ class SensDotMQTT:
             
             json_payload = json.dumps(payload)
             self.client.publish(topic, json_payload)
-            print(f"Published to {topic}: {json_payload}")
+            self._log("debug", f"Published to {topic}: {len(json_payload)} bytes")
             return True
             
         except Exception as e:
-            print(f"MQTT publish error: {e}")
+            self._log("error", f"MQTT publish error: {e}")
             self.connected = False
             return False
     
@@ -204,23 +220,6 @@ class SensDotMQTT:
             }
             
             # Temperature sensor discovery
-            temp_config = {
-                "name": device_name + " Temperature",
-                "unique_id": mqtt_name + "_temperature",
-                "device_class": "temperature",
-                "unit_of_measurement": "C",  # Use simple C to avoid encoding issues
-                "state_class": "measurement",
-                "state_topic": mqtt_name + "/data",
-                "value_template": "{{ value_json.data.temperature }}",
-                "device": {
-                    "identifiers": [mqtt_name],
-                    "name": device_name,
-                    "model": "ESP32-C3 SuperMini",
-                    "manufacturer": "SensDot",
-                    "sw_version": "1.0.0"
-                }
-            }
-            
             temp_topic = "homeassistant/sensor/" + mqtt_name + "_temperature/config"
             
             try:

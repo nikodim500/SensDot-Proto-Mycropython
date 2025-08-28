@@ -72,6 +72,14 @@ class ConfigManager:
         self.config['mqtt_discovery'] = mqtt_discovery  # Enable MQTT Discovery for Home Assistant
         return self._save_config()
     
+    def set_logging_config(self, log_level="INFO", log_file_size=10240, log_files_count=3, enable_file_logging=True):
+        """Set logging configuration parameters"""
+        self.config['log_level'] = log_level  # Log level: DEBUG, INFO, WARN, ERROR, CRITICAL
+        self.config['log_file_size'] = log_file_size  # Maximum log file size in bytes
+        self.config['log_files_count'] = log_files_count  # Number of rotated log files to keep
+        self.config['enable_file_logging'] = enable_file_logging  # Enable/disable file logging
+        return self._save_config()
+    
     def get_wifi_config(self):
         """Get WiFi configuration"""
         return {
@@ -96,6 +104,15 @@ class ConfigManager:
             'sensor_interval': self.config.get('sensor_interval', 30), 
             'debug_mode': self.config.get('debug_mode', False),
             'mqtt_discovery': self.config.get('mqtt_discovery', True)
+        }
+    
+    def get_logging_config(self):
+        """Get logging configuration"""
+        return {
+            'log_level': self.config.get('log_level', 'INFO'),
+            'log_file_size': self.config.get('log_file_size', 10240),
+            'log_files_count': self.config.get('log_files_count', 3),
+            'enable_file_logging': self.config.get('enable_file_logging', True)
         }
     
     def get_device_names(self):

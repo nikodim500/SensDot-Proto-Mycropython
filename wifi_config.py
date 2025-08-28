@@ -11,14 +11,22 @@ from config_manager import ConfigManager
 class WiFiConfigServer:
     """Enhanced WiFi configuration server with modern UI features"""
     
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, logger=None):
         self.config_manager = config_manager
+        self.logger = logger
         self.ap = None
         self.server_socket = None
         
+    def _log(self, level, message):
+        """Internal logging method"""
+        if self.logger:
+            getattr(self.logger, level)(message)
+        else:
+            print(f"[{level.upper()}] {message}")
+        
     def start_config_server(self):
         """Start WiFi AP and configuration web server"""
-        print("Starting WiFi configuration server...")
+        self._log("info", "Starting WiFi configuration server...")
         
         # Create AP
         self.ap = network.WLAN(network.AP_IF)
@@ -31,9 +39,9 @@ class WiFiConfigServer:
         # Configure as open network for easy access
         self.ap.config(essid=ap_name, authmode=0)
         
-        print(f"WiFi AP started: {ap_name}")
-        print(f"Connect to this network and go to: http://192.168.4.1")
-        print(f"AP IP: {self.ap.ifconfig()[0]}")
+        self._log("info", f"WiFi AP started: {ap_name}")
+        self._log("info", f"Connect to this network and go to: http://192.168.4.1")
+        self._log("info", f"AP IP: {self.ap.ifconfig()[0]}")
         
         # Start web server
         self._start_web_server()
