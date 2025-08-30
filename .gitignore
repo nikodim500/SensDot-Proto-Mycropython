@@ -1,0 +1,33 @@
+# Log files
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# MicroPython specific
+.micropython/
+
+# IDE files
+.vscode/settings.json
+.idea/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Device configuration files (optional - uncomment if you want to exclude)
+# device_config.json
+
+# Temporary files
+*.tmp
+*.bak
+*~
