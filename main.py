@@ -1,6 +1,6 @@
 # main.py
 # SensDot Proto Micropython - ESP32-C3 SuperMini IoT Device
-# Entry point for energy-efficient smarthome sensor device
+# Entry point for energy-efficient smarthome sensor monitoring
 
 import sys
 import time
@@ -8,6 +8,7 @@ import machine
 from config_manager import ConfigManager
 from wifi_config import WiFiConfigServer
 from logger import setup_logging, get_logger
+from pir_wakeup import check_pir_wake, enable_pir_sleep
 
 # Add lib directory to path for sensor libraries (when needed)
 sys.path.append('/lib')
@@ -22,6 +23,7 @@ def main_cycle(config_manager):
     
     # Get configuration
     advanced_config = config_manager.get_advanced_config()
+    ntp_config = config_manager.get_ntp_config()
     sleep_interval = advanced_config['sleep_interval']
     sensor_interval = advanced_config['sensor_interval']
     debug_mode = advanced_config['debug_mode']
@@ -31,6 +33,23 @@ def main_cycle(config_manager):
         logger.debug(f"Sleep interval: {sleep_interval}s, Sensor interval: {sensor_interval}s")
     else:
         logger.info(f"Sleep interval: {sleep_interval}s, Sensor interval: {sensor_interval}s")
+    
+    # Initialize NTP time synchronization
+    ntp_client = None
+    if ntp_config['enable_ntp']:
+        logger.info("Initializing NTP time synchronization...")
+        from ntp_client import NTPClient
+        dst_region = ntp_config.get('dst_region', 'NONE')
+        ntp_client = NTPClient(logger, ntp_config['timezone_offset'], dst_region)
+        ntp_client.set_sync_interval(ntp_config['ntp_sync_interval'])
+        
+        # Initial time sync
+        if ntp_client.sync_time(ntp_config['ntp_server']):
+            logger.info("Initial NTP synchronization successful")
+        else:
+            logger.warn("Initial NTP synchronization failed, will retry later")
+    else:
+        logger.info("NTP synchronization disabled")
     
     # Log system statistics
     log_stats = logger.get_log_stats()
@@ -84,8 +103,30 @@ def main_cycle(config_manager):
     # Main sensor loop
     sensor_count = 0
     last_sensor_time = time.time()
+    last_ntp_check = time.time()
+    ntp_check_interval = 300  # Check NTP sync every 5 minutes
     
-    logger.info("Entering main sensor loop")
+    logger.info("Starting main sensor monitoring cycle...")
+    
+    # Check for motion wake notification (only if PIR is enabled and we actually woke from PIR)
+    device_id = config_manager.get_device_id()
+    pir_config = config_manager.get_pir_config()
+    
+    # Only check PIR wake if PIR is enabled and deep sleep is being used
+    if pir_config.get('enabled', False) and pir_config.get('use_deep_sleep', True):
+        was_motion_wake = check_pir_wake()
+        if was_motion_wake and mqtt_connected:
+            logger.info("Sending motion detection notification...")
+            motion_data = {
+                "motion_detected": True,
+                "wake_time": time.time(),
+                "device_id": device_id,
+                "event_type": "motion_wake"
+            }
+            if mqtt.publish_data(motion_data):
+                logger.info("Motion notification sent successfully")
+            else:
+                logger.warning("Failed to send motion notification")
     
     while True:
         try:
@@ -94,6 +135,12 @@ def main_cycle(config_manager):
             # Check for incoming MQTT messages (only if connected)
             if mqtt_connected:
                 mqtt.check_messages()
+            
+            # Periodic NTP sync check
+            if ntp_client and (current_time - last_ntp_check) >= ntp_check_interval:
+                logger.debug("Checking NTP synchronization status...")
+                ntp_client.auto_sync_if_needed()
+                last_ntp_check = current_time
             
             # Read sensors at specified interval
             if current_time - last_sensor_time >= sensor_interval:
@@ -132,20 +179,28 @@ def main_cycle(config_manager):
                 sensor_count += 1
                 last_sensor_time = current_time
                     
-                # Deep sleep commented out for testing
-                # Enter deep sleep after publishing data
-                logger.info(f"Sleeping for {sleep_interval} seconds (using time.sleep for testing)...")
-                # mqtt.disconnect()  # Clean disconnect before sleep
-                
-                # Deep sleep - COMMENTED OUT FOR TESTING
-                # from machine import deepsleep
-                # deepsleep(sleep_interval * 1000)  # Convert to milliseconds
-                
-                # Using regular sleep for testing instead of deep sleep
-                time.sleep(sleep_interval)
-                
-                # Note: With deep sleep disabled, we continue the loop
-                # In production, deep sleep would restart the device
+                # Check if PIR sleep mode is enabled for power management
+                pir_config = config_manager.get_pir_config()
+                if pir_config.get('enabled', False) and pir_config.get('use_deep_sleep', True):
+                    logger.info(f"Enabling PIR deep sleep mode...")
+                    mqtt.disconnect() if mqtt_connected else None  # Clean disconnect
+                    enable_pir_sleep(config_manager, logger, sleep_interval)
+                    # Device will wake on motion or timer - this line won't be reached
+                    break
+                else:
+                    # Regular sleep mode for testing or when PIR disabled
+                    logger.info(f"Sleeping for {sleep_interval} seconds (using time.sleep for testing)...")
+                    # mqtt.disconnect()  # Clean disconnect before sleep
+                    
+                    # Deep sleep - COMMENTED OUT FOR TESTING
+                    # from machine import deepsleep
+                    # deepsleep(sleep_interval * 1000)  # Convert to milliseconds
+                    
+                    # Using regular sleep for testing instead of deep sleep
+                    time.sleep(sleep_interval)
+                    
+                    # Note: After sleep, continue to next sensor reading
+                    # In production, deep sleep would restart the device
             else:
                 # Wait a bit before next check
                 time.sleep(1)
@@ -197,9 +252,20 @@ def main():
     logger = setup_logging(config, console_output=True)
     logger.info("SensDot Proto device starting")
     
-    # Check if device is configured
+    # Check if device is configured first
     if config.is_configured():
-        logger.info("Device is configured, starting main cycle")
+        logger.info("Device is configured, checking for PIR wake-up...")
+        
+        # Check if device woke from PIR motion - handle early to save power
+        pir_config = config.get_pir_config()
+        if pir_config.get('enabled', False):
+            logger.info("PIR motion detection enabled, checking wake reason...")
+            should_continue = check_pir_wake(config, logger)
+            if not should_continue:
+                # PIR handler put device back to sleep, this line won't be reached
+                return
+        
+        logger.info("Starting main cycle")
         main_cycle(config)
     else:
         logger.info("Device not configured, starting WiFi AP for configuration")

@@ -83,7 +83,17 @@ class Logger:
     def _get_timestamp(self):
         """Get formatted timestamp for log entries"""
         try:
-            # Get current time (time since boot in seconds)
+            # Try to use NTP-synchronized time if available
+            try:
+                from ntp_client import get_current_time_formatted
+                formatted_time = get_current_time_formatted()
+                # If we get a proper formatted time (not fallback), use it
+                if not formatted_time.startswith('ts:'):
+                    return formatted_time
+            except:
+                pass  # Fall back to boot time if NTP not available
+            
+            # Fallback to boot time formatting
             t = time.time()
             
             # Convert to readable format (basic implementation)
@@ -95,7 +105,7 @@ class Logger:
             
             return f"{days:03d}d{hours:02d}:{minutes:02d}:{seconds:02d}"
         except:
-            # Fallback if time functions fail
+            # Ultimate fallback if time functions fail
             return f"{time.ticks_ms():010d}"
     
     def _rotate_files(self):

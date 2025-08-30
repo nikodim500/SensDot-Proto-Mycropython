@@ -4,8 +4,13 @@
 
 import network
 import socket
-import time
-import machine
+import time        # Get current configuration for form defaults
+        device_names = self.config_manager.get_device_names()
+        wifi_config = self.config_manager.get_wifi_config()
+        mqtt_config = self.config_manager.get_mqtt_config()
+        advanced_config = self.config_manager.get_advanced_config()
+        ntp_config = self.config_manager.get_ntp_config()
+        pir_config = self.config_manager.get_pir_config()t machine
 from config_manager import ConfigManager
 
 class WiFiConfigServer:
@@ -179,6 +184,23 @@ class WiFiConfigServer:
                         params.get('mqtt_discovery') == 'on'
                     )
                     
+                    # Save NTP config (timezone_offset and dst_region from form, keep other settings)
+                    current_ntp = self.config_manager.get_ntp_config()
+                    try:
+                        timezone_offset = float(params.get('timezone_offset', ['0'])[0])
+                    except (ValueError, IndexError):
+                        timezone_offset = current_ntp['timezone_offset']
+                    
+                    dst_region = params.get('dst_region', ['NONE'])[0]
+                    
+                    self.config_manager.set_ntp_config(
+                        current_ntp['enable_ntp'],
+                        current_ntp['ntp_server'],
+                        timezone_offset,
+                        current_ntp['ntp_sync_interval'],
+                        dst_region
+                    )
+                    
                     # Send success response
                     self._send_success_response(conn)
                     
@@ -202,6 +224,7 @@ class WiFiConfigServer:
         wifi_config = self.config_manager.get_wifi_config()
         mqtt_config = self.config_manager.get_mqtt_config()
         advanced_config = self.config_manager.get_advanced_config()
+        ntp_config = self.config_manager.get_ntp_config()
         
         # Build HTML with dynamic values
         html = """<!DOCTYPE html>
@@ -438,6 +461,73 @@ class WiFiConfigServer:
                         <input type="number" name="sensor_interval" id="sensor_interval" value=\"""" + str(advanced_config['sensor_interval']) + """\" min="5">
                     </div>
                     <div class="input-group">
+                        <label for="city_timezone">Select Your City/Region</label>
+                        <select name="city_timezone" id="city_timezone" onchange="updateTimezoneFromCity()">
+                            <option value="">Choose a city...</option>
+                            <optgroup label="UTC/GMT">
+                                <option value="0,NONE">UTC+0: Coordinated Universal Time</option>
+                                <option value="0,EU">UTC+0: London, Dublin</option>
+                                <option value="0,AFRICA">UTC+0: Lisbon, Casablanca</option>
+                            </optgroup>
+                            <optgroup label="Europe">
+                                <option value="1,EU">UTC+1: Paris, Berlin, Rome, Stockholm</option>
+                                <option value="1,EU">UTC+1: Amsterdam, Brussels, Copenhagen</option>
+                                <option value="1,EU">UTC+1: Prague, Vienna, Warsaw</option>
+                                <option value="2,EU">UTC+2: Athens, Helsinki, Istanbul</option>
+                                <option value="2,EU">UTC+2: Bucharest, Sofia, Tallinn</option>
+                                <option value="3,NONE">UTC+3: Moscow, St. Petersburg</option>
+                            </optgroup>
+                            <optgroup label="North America">
+                                <option value="-5,US">UTC-5: New York, Toronto, Montreal</option>
+                                <option value="-5,US">UTC-5: Miami, Atlanta, Boston</option>
+                                <option value="-6,US">UTC-6: Chicago, Dallas, Mexico City</option>
+                                <option value="-7,US">UTC-7: Denver, Phoenix, Salt Lake City</option>
+                                <option value="-8,US">UTC-8: Los Angeles, San Francisco, Seattle</option>
+                                <option value="-9,US">UTC-9: Anchorage</option>
+                                <option value="-10,NONE">UTC-10: Honolulu</option>
+                            </optgroup>
+                            <optgroup label="Asia">
+                                <option value="9,NONE">UTC+9: Tokyo, Seoul, Osaka</option>
+                                <option value="8,NONE">UTC+8: Beijing, Shanghai, Hong Kong</option>
+                                <option value="8,NONE">UTC+8: Singapore, Kuala Lumpur</option>
+                                <option value="7,NONE">UTC+7: Bangkok, Jakarta, Hanoi</option>
+                                <option value="5.5,NONE">UTC+5.5: Mumbai, New Delhi, Kolkata</option>
+                                <option value="4,NONE">UTC+4: Dubai, Abu Dhabi</option>
+                                <option value="3.5,ME">UTC+3.5: Tehran</option>
+                            </optgroup>
+                            <optgroup label="Australia & Pacific">
+                                <option value="10,AU">UTC+10: Sydney, Melbourne, Brisbane</option>
+                                <option value="9.5,AU">UTC+9.5: Adelaide</option>
+                                <option value="8,NONE">UTC+8: Perth</option>
+                                <option value="12,AU">UTC+12: Auckland</option>
+                            </optgroup>
+                            <optgroup label="South America">
+                                <option value="-3,SA">UTC-3: Buenos Aires, São Paulo</option>
+                                <option value="-4,SA">UTC-4: Santiago</option>
+                                <option value="-5,NONE">UTC-5: Lima, Bogotá</option>
+                            </optgroup>
+                            <optgroup label="Africa">
+                                <option value="2,NONE">UTC+2: Cairo, Johannesburg</option>
+                                <option value="1,NONE">UTC+1: Lagos, Kinshasa</option>
+                                <option value="3,NONE">UTC+3: Nairobi, Addis Ababa</option>
+                            </optgroup>
+                        </select>
+                        <small style="color: #666; font-size: 0.85em;">Choose your city for automatic timezone and DST settings</small>
+                    </div>
+                    <div class="input-group">
+                        <label for="dst_region">Daylight Saving Time</label>
+                        <select name="dst_region" id="dst_region">
+                            <option value="NONE" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'NONE' else '') + """>No Daylight Saving Time</option>
+                            <option value="EU" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'EU' else '') + """>Europe (Mar-Oct)</option>
+                            <option value="US" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'US' else '') + """>USA/Canada (Mar-Nov)</option>
+                            <option value="AU" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'AU' else '') + """>Australia (Oct-Apr)</option>
+                            <option value="SA" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'SA' else '') + """>South America (Oct-Mar)</option>
+                            <option value="ME" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'ME' else '') + """>Middle East (Mar-Oct)</option>
+                            <option value="AFRICA" """ + ('selected' if ntp_config.get('dst_region', 'NONE') == 'AFRICA' else '') + """>Africa (Mar-Oct)</option>
+                        </select>
+                        <small style="color: #666; font-size: 0.85em;">Automatically adjusts time for summer/winter</small>
+                    </div>
+                    <div class="input-group">
                         <div class="checkbox-group">
                             <input type="checkbox" name="mqtt_discovery" id="mqtt_discovery" """ + ('checked' if advanced_config['mqtt_discovery'] else '') + """>
                             <label for="mqtt_discovery">Enable MQTT Discovery (Home Assistant auto-detection)</label>
@@ -455,8 +545,9 @@ class WiFiConfigServer:
                 3. Enter your WiFi network details<br>
                 4. Configure MQTT broker settings<br>
                 5. Adjust timing intervals as needed<br>
-                6. <strong>MQTT Discovery:</strong> Enable for automatic Home Assistant detection<br>
-                7. Click Save to restart the device<br><br>
+                6. <strong>Choose your city</strong> from the dropdown for automatic timezone setup<br>
+                7. <strong>MQTT Discovery:</strong> Enable for automatic Home Assistant detection<br>
+                8. Click Save to restart the device<br><br>
                 <strong>Example:</strong> If MQTT Name is "kitchen_sensor", data will be published to "kitchen_sensor/data"<br>
                 <strong>Home Assistant:</strong> With MQTT Discovery enabled, sensors will appear automatically
             </div>
@@ -472,6 +563,37 @@ class WiFiConfigServer:
             } else {
                 input.type = 'password';
                 button.textContent = 'Show';
+            }
+        }
+        
+        function updateTimezoneFromCity() {
+            const citySelect = document.getElementById('city_timezone');
+            const dstSelect = document.getElementById('dst_region');
+            
+            if (citySelect.value) {
+                const [offset, dst] = citySelect.value.split(',');
+                
+                // Update DST dropdown
+                dstSelect.value = dst;
+                
+                // Create or update hidden timezone offset field for form submission
+                let hiddenOffset = document.getElementById('timezone_offset_hidden');
+                if (!hiddenOffset) {
+                    hiddenOffset = document.createElement('input');
+                    hiddenOffset.type = 'hidden';
+                    hiddenOffset.name = 'timezone_offset';
+                    hiddenOffset.id = 'timezone_offset_hidden';
+                    citySelect.parentNode.appendChild(hiddenOffset);
+                }
+                hiddenOffset.value = offset;
+                
+                // Visual feedback
+                citySelect.style.backgroundColor = '#e8f5e8';
+                dstSelect.style.backgroundColor = '#e8f5e8';
+                setTimeout(() => {
+                    citySelect.style.backgroundColor = '';
+                    dstSelect.style.backgroundColor = '';
+                }, 1000);
             }
         }
         

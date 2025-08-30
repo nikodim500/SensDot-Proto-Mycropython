@@ -1,0 +1,176 @@
+# SensDot ESP32 - Global Timezone & DST Configuration Guide
+
+## Quick Start
+1. Connect to SensDot-XXXX WiFi network
+2. Open browser to 192.168.4.1
+3. Choose your city from the dropdown menu
+4. DST region will be automatically selected
+5. Save configuration and restart device
+
+## Supported DST Regions (Global Coverage)
+
+### EU (Europe)
+- **DST Period**: March to October
+- **Rule**: Last Sunday in March to last Sunday in October
+- **Covers**: UK, France, Germany, Italy, Spain, Netherlands, Sweden, Poland, etc.
+- **Examples**: London, Paris, Berlin, Rome, Stockholm, Amsterdam
+
+### US (North America)  
+- **DST Period**: March to November
+- **Rule**: Second Sunday in March to first Sunday in November
+- **Covers**: USA, Canada, Mexico
+- **Examples**: New York, Toronto, Los Angeles, Chicago, Mexico City
+
+### AU (Australia/Pacific)
+- **DST Period**: October to April (Southern Hemisphere)
+- **Rule**: First Sunday in October to first Sunday in April
+- **Covers**: Australia (except WA/NT/QLD), New Zealand
+- **Examples**: Sydney, Melbourne, Adelaide, Auckland
+
+### SA (South America) - NEW!
+- **DST Period**: October to March (Southern Hemisphere)
+- **Rule**: Third Sunday in October to third Sunday in February/March
+- **Covers**: Brazil, Argentina, Chile, Paraguay
+- **Examples**: São Paulo, Buenos Aires, Santiago
+
+### ME (Middle East) - NEW!
+- **DST Period**: March to October
+- **Rule**: Third Friday in March to third Friday in October
+- **Covers**: Iran, Jordan, Lebanon, Syria
+- **Examples**: Tehran
+
+### AFRICA - NEW!
+- **DST Period**: March to October
+- **Rule**: Last Sunday in March to last Sunday in October
+- **Covers**: Morocco and some North African countries
+- **Examples**: Casablanca
+
+## Complete City List (40+ Cities)
+
+### UTC/GMT
+- UTC+0: Coordinated Universal Time
+- UTC+0: London, Dublin (EU DST)
+- UTC+0: Lisbon, Casablanca (AFRICA DST)
+
+### Europe  
+- UTC+1: Paris, Berlin, Rome, Stockholm (EU DST)
+- UTC+1: Amsterdam, Brussels, Copenhagen (EU DST)
+- UTC+1: Prague, Vienna, Warsaw (EU DST)
+- UTC+2: Athens, Helsinki, Istanbul (EU DST)
+- UTC+2: Bucharest, Sofia, Tallinn (EU DST)
+- UTC+3: Moscow, St. Petersburg (No DST)
+
+### North America
+- UTC-5: New York, Toronto, Montreal (US DST)
+- UTC-5: Miami, Atlanta, Boston (US DST)
+- UTC-6: Chicago, Dallas, Mexico City (US DST)
+- UTC-7: Denver, Phoenix, Salt Lake City (US DST)
+- UTC-8: Los Angeles, San Francisco, Seattle (US DST)
+- UTC-9: Anchorage (US DST)
+- UTC-10: Honolulu (No DST)
+
+### Asia
+- UTC+9: Tokyo, Seoul, Osaka (No DST)
+- UTC+8: Beijing, Shanghai, Hong Kong (No DST)
+- UTC+8: Singapore, Kuala Lumpur (No DST)
+- UTC+7: Bangkok, Jakarta, Hanoi (No DST)
+- UTC+5.5: Mumbai, New Delhi, Kolkata (No DST)
+- UTC+4: Dubai, Abu Dhabi (No DST)
+- UTC+3.5: Tehran (ME DST) - NEW!
+
+### Australia & Pacific
+- UTC+10: Sydney, Melbourne, Brisbane (AU DST)
+- UTC+9.5: Adelaide (AU DST)
+- UTC+8: Perth (No DST)
+- UTC+12: Auckland (AU DST)
+
+### South America - NEW DST SUPPORT!
+- UTC-3: Buenos Aires, São Paulo (SA DST)
+- UTC-4: Santiago (SA DST)  
+- UTC-5: Lima, Bogotá (No DST)
+
+### Africa
+- UTC+2: Cairo, Johannesburg (No DST)
+- UTC+1: Lagos, Kinshasa (No DST)
+- UTC+3: Nairobi, Addis Ababa (No DST)
+
+## DST Examples by Region
+
+### Europe (EU DST)
+- **London**: Winter = UTC+0 (GMT), Summer = UTC+1 (BST)
+- **Paris**: Winter = UTC+1 (CET), Summer = UTC+2 (CEST)
+- **Helsinki**: Winter = UTC+2 (EET), Summer = UTC+3 (EEST)
+
+### North America (US DST)
+- **New York**: Winter = UTC-5 (EST), Summer = UTC-4 (EDT)
+- **Chicago**: Winter = UTC-6 (CST), Summer = UTC-5 (CDT)
+- **Los Angeles**: Winter = UTC-8 (PST), Summer = UTC-7 (PDT)
+
+### Australia (AU DST)
+- **Sydney**: Winter = UTC+10 (AEST), Summer = UTC+11 (AEDT)
+- **Adelaide**: Winter = UTC+9.5 (ACST), Summer = UTC+10.5 (ACDT)
+- **Perth**: Always UTC+8 (AWST) - No DST
+
+### South America (SA DST) - NEW!
+- **São Paulo**: Winter = UTC-3 (BRT), Summer = UTC-2 (BRST)
+- **Buenos Aires**: Winter = UTC-3 (ART), Summer = UTC-2 (ARST)
+- **Santiago**: Winter = UTC-4 (CLT), Summer = UTC-3 (CLST)
+
+### Middle East (ME DST) - NEW!
+- **Tehran**: Winter = UTC+3.5 (IRST), Summer = UTC+4.5 (IRDT)
+
+### Africa (AFRICA DST) - NEW!
+- **Casablanca**: Winter = UTC+0 (WET), Summer = UTC+1 (WEST)
+
+## Manual Configuration
+
+If your city isn't listed:
+1. **Find nearest major city** in same timezone
+2. **Set timezone offset** manually (your UTC offset)
+3. **Choose DST region** or "NONE" if no DST
+
+## DST Transition Dates 2025
+
+### EU Region
+- **Start**: March 30, 2025 (Last Sunday)
+- **End**: October 26, 2025 (Last Sunday)
+
+### US Region  
+- **Start**: March 9, 2025 (Second Sunday)
+- **End**: November 2, 2025 (First Sunday)
+
+### AU Region
+- **Start**: October 5, 2025 (First Sunday)
+- **End**: April 5, 2026 (First Sunday)
+
+### SA Region
+- **Start**: October 19, 2025 (Third Sunday)
+- **End**: February 15, 2026 (Third Sunday)
+
+### ME Region
+- **Start**: March 21, 2025 (Third Friday)
+- **End**: October 17, 2025 (Third Friday)
+
+### AFRICA Region
+- **Start**: March 30, 2025 (Last Sunday)
+- **End**: October 26, 2025 (Last Sunday)
+
+## Troubleshooting
+
+**Time is wrong?**
+- Check timezone offset matches your location
+- Verify DST region is correct for your country
+- Some regions don't use DST - select "NONE"
+
+**DST not working?**
+- Ensure device has NTP sync (check logs)
+- Verify you're in a DST-enabled region
+- DST calculations are automatic based on current date
+
+**My city not listed?**
+- Choose nearest city with same timezone
+- Use manual configuration if needed
+- Contact us to add your city in future updates
+
+## Reset Configuration
+If needed, delete `device_config.json` from device to start fresh setup.

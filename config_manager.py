@@ -80,6 +80,27 @@ class ConfigManager:
         self.config['enable_file_logging'] = enable_file_logging  # Enable/disable file logging
         return self._save_config()
     
+    def set_ntp_config(self, enable_ntp=True, ntp_server="pool.ntp.org", timezone_offset=0, dst_region="NONE", sync_interval=3600):
+        """Set NTP time synchronization configuration"""
+        self.config['enable_ntp'] = enable_ntp  # Enable/disable NTP synchronization
+        self.config['ntp_server'] = ntp_server  # Primary NTP server
+        
+        # Ensure timezone_offset is float
+        try:
+            self.config['timezone_offset'] = float(timezone_offset)
+        except (ValueError, TypeError):
+            self.config['timezone_offset'] = 0.0
+            
+        self.config['dst_region'] = dst_region  # DST region for automatic DST handling
+        
+        # Ensure sync_interval is integer
+        try:
+            self.config['ntp_sync_interval'] = int(sync_interval)
+        except (ValueError, TypeError):
+            self.config['ntp_sync_interval'] = 3600
+            
+        return self._save_config()
+    
     def get_wifi_config(self):
         """Get WiFi configuration"""
         return {
@@ -115,6 +136,16 @@ class ConfigManager:
             'enable_file_logging': self.config.get('enable_file_logging', True)
         }
     
+    def get_ntp_config(self):
+        """Get NTP configuration"""
+        return {
+            'enable_ntp': self.config.get('enable_ntp', True),
+            'ntp_server': self.config.get('ntp_server', 'pool.ntp.org'),
+            'timezone_offset': self.config.get('timezone_offset', 0),
+            'dst_region': self.config.get('dst_region', 'NONE'),
+            'ntp_sync_interval': self.config.get('ntp_sync_interval', 3600)
+        }
+    
     def get_device_names(self):
         """Get device and MQTT names"""
         device_id_short = self.get_device_id()[-4:]
@@ -128,6 +159,26 @@ class ConfigManager:
         import machine
         import ubinascii
         return ubinascii.hexlify(machine.unique_id()).decode()
+    
+    def set_pir_config(self, pir_enabled=True, pir_pin=2, min_wake_interval=300, motion_timeout=30):
+        """Set PIR motion sensor configuration"""
+        self.config['pir'] = {
+            'enabled': pir_enabled,
+            'pir_pin': pir_pin,
+            'min_wake_interval': min_wake_interval,  # seconds between motion alerts
+            'motion_timeout': motion_timeout         # seconds to stay awake after motion
+        }
+        return self._save_config()
+    
+    def get_pir_config(self):
+        """Get PIR configuration"""
+        default_pir = {
+            'enabled': False,
+            'pir_pin': 2,
+            'min_wake_interval': 300,
+            'motion_timeout': 30
+        }
+        return self.config.get('pir', default_pir)
     
     def clear_config(self):
         """Clear all configuration (factory reset)"""
