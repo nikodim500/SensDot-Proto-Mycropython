@@ -1,10 +1,16 @@
 # main.py
 # SensDot Proto Micropython - ESP32-C3 SuperMini IoT Device
 # Entry point for energy-efficient smarthome sensor monitoring
+#
+# GPIO Configuration:
+# TODO: GPIO5 - PIR motion sensor input (configured in pir_wakeup.py)
+# TODO: GPIO6 - External LED output (not yet implemented)
+# GPIO8 - Internal LED (current status LED with inverted logic)
 
 import sys
 import time
 import machine
+from machine import Pin
 from config_manager import ConfigManager
 from wifi_config import WiFiConfigServer
 from logger import setup_logging, get_logger
@@ -13,6 +19,41 @@ from pir_wakeup import check_pir_wake, enable_pir_sleep
 # Add lib directory to path for sensor libraries (when needed)
 sys.path.append('/lib')
 sys.path.append('lib')
+
+# LED setup for status indication
+# GPIO pins are now configurable through config_manager
+# Default: GPIO8 (internal), GPIO6 (external planned)
+try:
+    config_manager_temp = ConfigManager()
+    gpio_config = config_manager_temp.get_gpio_config()
+    status_led = Pin(gpio_config['status_led_pin'], Pin.OUT)
+    status_led.on()  # Turn on LED when device starts
+    LED_AVAILABLE = True
+    LED_PIN = gpio_config['status_led_pin']
+    print(f"Status LED initialized on GPIO{LED_PIN}")
+except Exception as e:
+    LED_AVAILABLE = False
+    LED_PIN = None
+    print(f"LED not available: {e}")
+
+def led_on():
+    """Turn on status LED if available (inverted logic)"""
+    if LED_AVAILABLE:
+        status_led.off()  # Inverted: off() turns LED ON
+
+def led_off():
+    """Turn off status LED if available (inverted logic)"""
+    if LED_AVAILABLE:
+        status_led.on()  # Inverted: on() turns LED OFF
+
+def led_blink(times=3, delay=0.2):
+    """Blink status LED if available (inverted logic)"""
+    if LED_AVAILABLE:
+        for _ in range(times):
+            status_led.on()   # Turn LED OFF
+            time.sleep(delay)
+            status_led.off()  # Turn LED ON
+            time.sleep(delay)
 
 
 def main_cycle(config_manager):
@@ -56,6 +97,7 @@ def main_cycle(config_manager):
     logger.debug(f"Logging: {log_stats['level']} level, file: {log_stats['log_file']}")
     
     # Initialize MQTT client with retries
+    led_blink(2, 0.1)  # Quick blink to indicate MQTT initialization
     from mqtt_client import SensDotMQTT
     mqtt = SensDotMQTT(config_manager, logger)
     
@@ -82,6 +124,7 @@ def main_cycle(config_manager):
         # User can reconfigure if needed via reset button
     else:
         logger.info("MQTT connected successfully")
+        led_blink(1, 0.5)  # Single long blink for successful MQTT connection
         
         # Publish MQTT Discovery configuration for Home Assistant (if enabled)
         advanced_config = config_manager.get_advanced_config()
@@ -108,6 +151,9 @@ def main_cycle(config_manager):
     
     logger.info("Starting main sensor monitoring cycle...")
     
+    # Turn on LED to indicate active monitoring mode
+    led_on()
+    
     # Check for motion wake notification (only if PIR is enabled and we actually woke from PIR)
     device_id = config_manager.get_device_id()
     pir_config = config_manager.get_pir_config()
@@ -132,6 +178,9 @@ def main_cycle(config_manager):
         try:
             current_time = time.time()
             
+            # Keep LED ON while waiting for sensor interval
+            led_on()
+            
             # Check for incoming MQTT messages (only if connected)
             if mqtt_connected:
                 mqtt.check_messages()
@@ -145,6 +194,8 @@ def main_cycle(config_manager):
             # Read sensors at specified interval
             if current_time - last_sensor_time >= sensor_interval:
                 logger.debug(f"Sensor reading #{sensor_count}")
+                led_blink(3, 0.1)  # Triple quick blink for sensor reading
+                # LED will be ON after blinking (led_blink ends with LED on)
                 
                 # TODO: Read actual sensors here
                 # Example sensor data structure for BME280:
@@ -188,16 +239,19 @@ def main_cycle(config_manager):
                     # Device will wake on motion or timer - this line won't be reached
                     break
                 else:
-                    # Regular sleep mode for testing or when PIR disabled
-                    logger.info(f"Sleeping for {sleep_interval} seconds (using time.sleep for testing)...")
-                    # mqtt.disconnect()  # Clean disconnect before sleep
+                    # Regular deep sleep mode when PIR disabled
+                    logger.info(f"Entering deep sleep for {sleep_interval} seconds...")
+                    mqtt.disconnect() if mqtt_connected else None  # Clean disconnect before sleep
                     
-                    # Deep sleep - COMMENTED OUT FOR TESTING
-                    # from machine import deepsleep
-                    # deepsleep(sleep_interval * 1000)  # Convert to milliseconds
+                    # LED indication before sleep - turn off LED
+                    led_off()
+                    time.sleep(0.5)  # Brief pause with LED off to indicate sleep
                     
-                    # Using regular sleep for testing instead of deep sleep
-                    time.sleep(sleep_interval)
+                    # Enable deep sleep
+                    from machine import deepsleep
+                    deepsleep(sleep_interval * 1000)  # Convert to milliseconds
+                    
+                    # This line will never be reached as device restarts after deep sleep
                     
                     # Note: After sleep, continue to next sensor reading
                     # In production, deep sleep would restart the device

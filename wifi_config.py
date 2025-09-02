@@ -4,13 +4,8 @@
 
 import network
 import socket
-import time        # Get current configuration for form defaults
-        device_names = self.config_manager.get_device_names()
-        wifi_config = self.config_manager.get_wifi_config()
-        mqtt_config = self.config_manager.get_mqtt_config()
-        advanced_config = self.config_manager.get_advanced_config()
-        ntp_config = self.config_manager.get_ntp_config()
-        pir_config = self.config_manager.get_pir_config()t machine
+import time
+import machine
 from config_manager import ConfigManager
 
 class WiFiConfigServer:

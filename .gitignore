@@ -24,8 +24,9 @@ __pycache__/
 ehthumbs.db
 Thumbs.db
 
-# Device configuration files (optional - uncomment if you want to exclude)
-# device_config.json
+# Device configuration files (contains sensitive WiFi/MQTT credentials)
+device_config.json
+device_config_backup.json
 
 # Temporary files
 *.tmp

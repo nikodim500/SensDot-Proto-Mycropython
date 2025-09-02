@@ -1,6 +1,13 @@
 # config_manager.py
 # Configuration management for SensDot Proto device
 # Handles persistent storage of WiFi and MQTT settings
+#
+# TODO: Make all configuration manageable through MQTT
+# - Add MQTT command handlers for remote configuration updates
+# - Implement config/set/{parameter} and config/get/{parameter} topics
+# - Add validation and error responses for MQTT config commands
+# - Enable remote GPIO pin configuration for different hardware variants
+# - Support bulk configuration updates via MQTT JSON payloads
 
 import json
 
@@ -170,15 +177,48 @@ class ConfigManager:
         }
         return self._save_config()
     
+    def set_gpio_config(self, status_led_pin=8, external_led_pin=6, pir_pin=5, 
+                       i2c_sda_pin=4, i2c_scl_pin=3, spi_mosi_pin=7, spi_miso_pin=2, spi_sck_pin=10):
+        """Set GPIO pin configuration"""
+        self.config['gpio'] = {
+            'status_led_pin': status_led_pin,      # Internal status LED (GPIO8 on ESP32-C3 SuperMini)
+            'external_led_pin': external_led_pin,  # External LED for status indication
+            'pir_pin': pir_pin,                    # PIR motion sensor input
+            'i2c_sda_pin': i2c_sda_pin,           # I2C SDA pin for sensors
+            'i2c_scl_pin': i2c_scl_pin,           # I2C SCL pin for sensors
+            'spi_mosi_pin': spi_mosi_pin,         # SPI MOSI pin for sensors
+            'spi_miso_pin': spi_miso_pin,         # SPI MISO pin for sensors
+            'spi_sck_pin': spi_sck_pin            # SPI SCK pin for sensors
+        }
+        return self._save_config()
+    
+    def get_gpio_config(self):
+        """Get GPIO pin configuration"""
+        default_gpio = {
+            'status_led_pin': 8,      # GPIO8 - Internal LED on ESP32-C3 SuperMini
+            'external_led_pin': 6,    # GPIO6 - External LED for status indication
+            'pir_pin': 5,             # GPIO5 - PIR motion sensor input
+            'i2c_sda_pin': 4,         # GPIO4 - I2C SDA pin
+            'i2c_scl_pin': 3,         # GPIO3 - I2C SCL pin
+            'spi_mosi_pin': 7,        # GPIO7 - SPI MOSI pin
+            'spi_miso_pin': 2,        # SPI MISO pin (avoid if using PIR on GPIO2)
+            'spi_sck_pin': 10         # GPIO10 - SPI SCK pin
+        }
+        return self.config.get('gpio', default_gpio)
+    
     def get_pir_config(self):
-        """Get PIR configuration"""
+        """Get PIR configuration with GPIO pin from GPIO config"""
+        gpio_config = self.get_gpio_config()
         default_pir = {
             'enabled': False,
-            'pir_pin': 2,
+            'pir_pin': gpio_config['pir_pin'],  # Use GPIO config for PIR pin
             'min_wake_interval': 300,
             'motion_timeout': 30
         }
-        return self.config.get('pir', default_pir)
+        pir_config = self.config.get('pir', default_pir)
+        # Always use the GPIO config for the pin
+        pir_config['pir_pin'] = gpio_config['pir_pin']
+        return pir_config
     
     def clear_config(self):
         """Clear all configuration (factory reset)"""

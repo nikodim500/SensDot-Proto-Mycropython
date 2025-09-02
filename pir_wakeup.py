@@ -13,19 +13,25 @@ class PIRWakeup:
     Handles motion detection with intelligent timing to prevent excessive wake-ups
     """
     
-    def __init__(self, pir_pin=2, config_manager=None, logger=None):
+    def __init__(self, pir_pin=None, config_manager=None, logger=None):
         """
         Initialize PIR wake-up system
         
         Args:
-            pir_pin: GPIO pin connected to PIR sensor (default: GPIO2)
+            pir_pin: GPIO pin connected to PIR sensor (None to use config_manager)
             config_manager: Configuration manager instance
             logger: Logger instance
         """
-        self.pir_pin = pir_pin
         self.config_manager = config_manager
         self.logger = logger
         self.rtc = RTC()
+        
+        # Get PIR pin from config if not specified
+        if pir_pin is None and config_manager:
+            gpio_config = config_manager.get_gpio_config()
+            self.pir_pin = gpio_config['pir_pin']
+        else:
+            self.pir_pin = pir_pin or 5  # Default to GPIO5
         
         # Default configuration
         self.min_wake_interval = 300  # 5 minutes minimum between motion alerts

@@ -1,5 +1,12 @@
 # mqtt_client.py
 # MQTT client for SensDot device communication
+#
+# TODO: Add MQTT-based configuration management
+# - Implement config command handlers for remote configuration
+# - Add topics: {topic}/config/set/{parameter} and {topic}/config/get/{parameter}
+# - Support JSON payload configuration updates
+# - Add validation and error responses for config commands
+# - Enable remote restart/reboot commands via MQTT
 
 import time
 try:
