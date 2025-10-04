@@ -233,9 +233,11 @@ def main_cycle(config_manager):
                 # Check if PIR sleep mode is enabled for power management
                 pir_config = config_manager.get_pir_config()
                 if pir_config.get('enabled', False) and pir_config.get('use_deep_sleep', True):
-                    logger.info(f"Enabling PIR deep sleep mode...")
-                    mqtt.disconnect() if mqtt_connected else None  # Clean disconnect
-                    enable_pir_sleep(config_manager, logger, sleep_interval)
+                    logger.info(f"Enabling PIR deep sleep mode (sleep={sleep_interval}s, PIR pin={pir_config.get('pir_pin')})...")
+                    if mqtt_connected:
+                        mqtt.disconnect()  # Clean disconnect
+                    # Correct argument order: sleep_seconds first, then config_manager, logger
+                    enable_pir_sleep(sleep_interval, config_manager, logger)
                     # Device will wake on motion or timer - this line won't be reached
                     break
                 else:

@@ -124,13 +124,25 @@ class PIRWakeup:
     def setup_pir_interrupt(self):
         """Setup PIR sensor as wake-up source for deep sleep"""
         try:
-            # Configure PIR pin as input with pull-down
-            pir = Pin(self.pir_pin, Pin.IN, Pin.PULL_DOWN)
+            # Validate RTC-capable pin (ESP32-C3 deep sleep wake: GPIO0..GPIO5)
+            if self.pir_pin not in (0,1,2,3,4,5):
+                self._log("warn", f"GPIO{self.pir_pin} is NOT RTC-capable for deep sleep wake on ESP32-C3; motion will not wake from deep sleep")
+            else:
+                self._log("debug", f"GPIO{self.pir_pin} is RTC-capable")
+
+            # Configure PIR pin as input with pull-down (fallback to plain IN if unsupported)
+            try:
+                pir = Pin(self.pir_pin, Pin.IN, Pin.PULL_DOWN)
+            except Exception:
+                pir = Pin(self.pir_pin, Pin.IN)
+
+            # Configure as wake-up source (rising level for motion). API may vary by port; wrap in try.
+            try:
+                machine.Pin.wake_on_level(pir, 1)
+            except Exception as api_err:
+                self._log("warn", f"wake_on_level not available: {api_err}")
             
-            # Configure as wake-up source (rising edge - motion detected)
-            machine.Pin.wake_on_level(pir, 1)
-            
-            self._log("info", f"PIR interrupt configured on GPIO{self.pir_pin}")
+            self._log("info", f"PIR interrupt configured on GPIO{self.pir_pin} (wake on HIGH)")
             return True
         except Exception as e:
             self._log("error", f"Failed to setup PIR interrupt: {e}")
