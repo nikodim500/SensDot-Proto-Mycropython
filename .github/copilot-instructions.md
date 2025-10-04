@@ -41,11 +41,11 @@ ESP32-C3 SuperMini IoT device firmware for energy-efficient smarthome sensor mon
 - **Configuration parameter**: Add to `ConfigManager` set/get methods and web form
 
 ## Key Files & Directories
-- `src/main.py` — Device boot logic and main sensor loop
-- `lib/config_manager.py` — Persistent configuration (WiFi, MQTT settings)
-- `lib/wifi_config.py` — WiFi AP mode and web configuration interface
-- `lib/mqtt_client.py` — MQTT client with auto-reconnection and message handling
-- `tests/test_config.py` — Local testing with mocked MicroPython modules
+- `main.py` — Device boot logic and main sensor loop
+- `config_manager.py` — Persistent configuration (WiFi, MQTT settings)
+- `wifi_config.py` — WiFi AP mode and web configuration interface
+- `mqtt_client.py` — MQTT client with auto-reconnection and message handling
+- `tests/` — All tests are kept in the directory
 
 ## Energy Efficiency Notes
 - WiFi AP only during initial configuration
