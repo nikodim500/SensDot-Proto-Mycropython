@@ -147,6 +147,23 @@ class PIRWakeup:
         except Exception as e:
             self._log("error", f"Failed to setup PIR interrupt: {e}")
             return False
+
+    def configure_wake_sources(self, timer_ms=None):
+        """
+        Configure wake sources before entering deep sleep.
+        Primary: PIR (if RTC-capable). Optional: timer.
+
+        Args:
+            timer_ms: Optional timeout in milliseconds for timed wake. If None, only PIR.
+        """
+        pir_ok = self.setup_pir_interrupt()
+        if timer_ms is not None:
+            try:
+                # On ESP32-C3 MicroPython deepsleep(ms) already arms RTC timer.
+                self._log("debug", f"Timer wake will be armed for {timer_ms} ms by deepsleep call")
+            except Exception as e:
+                self._log("warn", f"Failed to configure timer wake: {e}")
+        return pir_ok
     
     def handle_motion_wake(self):
         """
@@ -189,15 +206,17 @@ class PIRWakeup:
         Args:
             sleep_seconds: Time to sleep in seconds (None for indefinite PIR-only wake)
         """
-        # Setup PIR as wake source
-        self.setup_pir_interrupt()
-        
+        # Configure wake sources (PIR + optional timer)
+        sleep_ms = None
         if sleep_seconds:
             sleep_ms = int(sleep_seconds * 1000)
-            self._log("info", f"Entering deep sleep for {sleep_seconds}s with PIR wake-up")
+        self.configure_wake_sources(timer_ms=sleep_ms)
+
+        if sleep_ms is not None:
+            self._log("info", f"Entering deep sleep for {sleep_seconds}s (PIR + timer)")
             deepsleep(sleep_ms)
         else:
-            self._log("info", "Entering deep sleep with PIR wake-up only")
+            self._log("info", "Entering deep sleep (PIR only, no timer)")
             deepsleep()
     
     def send_motion_notification(self, mqtt_client=None):

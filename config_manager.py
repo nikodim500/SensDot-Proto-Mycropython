@@ -167,13 +167,20 @@ class ConfigManager:
         import ubinascii
         return ubinascii.hexlify(machine.unique_id()).decode()
     
-    def set_pir_config(self, pir_enabled=True, pir_pin=2, min_wake_interval=300, motion_timeout=30):
-        """Set PIR motion sensor configuration"""
+    def set_pir_config(self, pir_enabled=True, pir_pin=5, min_wake_interval=300, motion_timeout=30, use_deep_sleep=True):
+        """Set PIR motion sensor configuration
+        pir_enabled: enable/disable PIR logic
+        pir_pin: GPIO pin (should be RTC capable 0-5 on ESP32-C3 for wake)
+        min_wake_interval: minimum seconds between wake events (rate limiting)
+        motion_timeout: seconds to keep device awake after motion before going back to sleep
+        use_deep_sleep: if True device will enter deep sleep and wake on PIR/timer; if False only motion logic active while running
+        """
         self.config['pir'] = {
             'enabled': pir_enabled,
             'pir_pin': pir_pin,
-            'min_wake_interval': min_wake_interval,  # seconds between motion alerts
-            'motion_timeout': motion_timeout         # seconds to stay awake after motion
+            'min_wake_interval': min_wake_interval,
+            'motion_timeout': motion_timeout,
+            'use_deep_sleep': use_deep_sleep
         }
         return self._save_config()
     
@@ -211,13 +218,17 @@ class ConfigManager:
         gpio_config = self.get_gpio_config()
         default_pir = {
             'enabled': False,
-            'pir_pin': gpio_config['pir_pin'],  # Use GPIO config for PIR pin
+            'pir_pin': gpio_config['pir_pin'],  # Always mirror GPIO config
             'min_wake_interval': 300,
-            'motion_timeout': 30
+            'motion_timeout': 30,
+            'use_deep_sleep': True
         }
         pir_config = self.config.get('pir', default_pir)
         # Always use the GPIO config for the pin
         pir_config['pir_pin'] = gpio_config['pir_pin']
+        # Ensure new key exists if older config stored
+        if 'use_deep_sleep' not in pir_config:
+            pir_config['use_deep_sleep'] = True
         return pir_config
     
     def clear_config(self):

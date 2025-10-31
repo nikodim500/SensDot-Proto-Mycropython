@@ -47,33 +47,104 @@ class SensDotMQTT:
             ip = self.wifi.ifconfig()[0]
             self._log("info", f"Already connected to WiFi: {ip}")
             return True
-        
+
         wifi_config = self.config_manager.get_wifi_config()
         ssid = wifi_config['ssid']
         password = wifi_config['password']
-        
+
         if not ssid:
             self._log("error", "No WiFi SSID configured")
             return False
-        
-        self._log("info", f"Connecting to WiFi: {ssid}")
+
+        # Ensure clean state
+        try:
+            if hasattr(self.wifi, 'disconnect'):
+                self.wifi.disconnect()
+        except:
+            pass
+        try:
+            self.wifi.active(False)
+            time.sleep(0.1)
+        except:
+            pass
         self.wifi.active(True)
-        self.wifi.connect(ssid, password)
-        
-        # Wait for connection
-        timeout = 10
-        while not self.wifi.isconnected() and timeout > 0:
-            time.sleep(1)
-            timeout -= 1
-            print(".", end="")
-        
-        if self.wifi.isconnected():
-            ip = self.wifi.ifconfig()[0]
-            self._log("info", f"WiFi connected: {ip}")
-            return True
-        else:
-            self._log("error", "WiFi connection failed")
-            return False
+
+        # Optional pre-scan to validate SSID (helps diagnose typos / 5GHz issue)
+        try:
+            nets = self.wifi.scan()
+            found = False
+            if nets:
+                for ap in nets:
+                    # ap: (ssid, bssid, channel, RSSI, authmode, hidden)
+                    try:
+                        ap_ssid = ap[0].decode() if isinstance(ap[0], bytes) else ap[0]
+                    except:
+                        ap_ssid = ''
+                    if ap_ssid == ssid:
+                        found = True
+                        break
+            if not found:
+                self._log("warn", "SSID not found in scan (ensure 2.4GHz and within range)")
+        except Exception as e:
+            # Scan not always supported concurrently; ignore
+            pass
+
+        self._log("info", f"Connecting to WiFi: {ssid}")
+        attempts = 2
+        for attempt in range(attempts):
+            try:
+                self.wifi.connect(ssid, password)
+            except OSError as e:
+                self._log("error", f"WiFi connect() error: {e}")
+                return False
+
+            # Wait for connection with extended timeout and status checks
+            timeout = 30
+            while timeout > 0:
+                try:
+                    if self.wifi.isconnected():
+                        ip = self.wifi.ifconfig()[0]
+                        self._log("info", f"WiFi connected: {ip}")
+                        return True
+                    # If status() exists, check failure states early
+                    st = None
+                    try:
+                        st = self.wifi.status()
+                    except:
+                        st = None
+                    if isinstance(st, int):
+                        # 0:IDLE 1:CONNECTING 2:WRONG_PASSWORD 3:NO_AP_FOUND 4:FAIL 5:GOT_IP
+                        if st in (2, 3, 4):
+                            if st == 2:
+                                self._log("error", "WiFi auth error (wrong password)")
+                            elif st == 3:
+                                self._log("error", "WiFi AP not found")
+                            else:
+                                self._log("error", "WiFi connection failed (status 4)")
+                            return False
+                    time.sleep(1)
+                    timeout -= 1
+                    print(".", end="")
+                except OSError as e:
+                    self._log("error", f"WiFi wait error: {e}")
+                    return False
+
+            # timed out; one more attempt after a short reset
+            self._log("warn", "WiFi connection timeout, retrying once...")
+            try:
+                if hasattr(self.wifi, 'disconnect'):
+                    self.wifi.disconnect()
+            except:
+                pass
+            try:
+                self.wifi.active(False)
+                time.sleep(0.2)
+            except:
+                pass
+            self.wifi.active(True)
+
+        self._log("error", "WiFi connection timeout (all attempts)")
+        return False
     
     def connect_mqtt(self):
         """Connect to MQTT broker"""

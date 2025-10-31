@@ -1,43 +1,120 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "MPY: REPL (interactive)",
-      "type": "process",
-      "command": "mpremote",
-      "args": ["connect", "port:COM3", "repl"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "MPY: Run main.py (RAM)",
-      "type": "process",
-      "command": "mpremote",
-      "args": ["connect", "port:COM3", "run", "main.py"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "MPY: Sync ./src → device",
-      "type": "process",
-      "command": "mpremote",
-      "args": ["connect", "port:COM3", "fs", "cp", "-r", "src", ":"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated"
-      },
-      "problemMatcher": []
-    }
-  ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "MPY: REPL (interactive)",
+			"type": "process",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"repl"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"presentation": {
+				"reveal": "always",
+				"focus": true,
+				"panel": "dedicated",
+				"clear": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "MPY: Run main.py (RAM)",
+			"type": "process",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"run",
+				"main.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "MPY: Sync ./src → device",
+			"type": "process",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"-r",
+				"src",
+				":"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "MPY: Copy wifi_config.py",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\wifi_config.py",
+				":wifi_config.py"
+			],
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Reset device",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"reset"
+			],
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Run main.py (RAM) — direct",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"run",
+				"main.py"
+			],
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Delete device_config.json",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"rm",
+				":device_config.json"
+			],
+			"isBackground": false,
+			"group": "none"
+		}
+	]
 }

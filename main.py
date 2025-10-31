@@ -46,14 +46,18 @@ def led_off():
     if LED_AVAILABLE:
         status_led.on()  # Inverted: on() turns LED OFF
 
-def led_blink(times=3, delay=0.2):
-    """Blink status LED if available (inverted logic)"""
+def led_blink(times=3, delay=0.2, final_on=True):
+    """Blink status LED if available (inverted logic)
+    final_on: leave LED on at end (default True) else turn it off
+    """
     if LED_AVAILABLE:
         for _ in range(times):
-            status_led.on()   # Turn LED OFF
+            status_led.on()   # Turn LED OFF (inverted)
             time.sleep(delay)
             status_led.off()  # Turn LED ON
             time.sleep(delay)
+        if not final_on:
+            status_led.on()
 
 
 def main_cycle(config_manager):
@@ -75,20 +79,32 @@ def main_cycle(config_manager):
     else:
         logger.info(f"Sleep interval: {sleep_interval}s, Sensor interval: {sensor_interval}s")
     
-    # Initialize NTP time synchronization
+    # Bring up WiFi before any network tasks (NTP/MQTT)
+    from mqtt_client import SensDotMQTT
+    mqtt = SensDotMQTT(config_manager, logger)
+    wifi_connected = mqtt.connect_wifi()
+    if not wifi_connected:
+        logger.error("WiFi not connected; starting AP for reconfiguration")
+        wifi_config = WiFiConfigServer(config_manager, logger)
+        wifi_config.start_config_server()  # blocks to allow reconfiguration
+        return
+
+    # Initialize NTP time synchronization (after WiFi)
     ntp_client = None
     if ntp_config['enable_ntp']:
-        logger.info("Initializing NTP time synchronization...")
-        from ntp_client import NTPClient
-        dst_region = ntp_config.get('dst_region', 'NONE')
-        ntp_client = NTPClient(logger, ntp_config['timezone_offset'], dst_region)
-        ntp_client.set_sync_interval(ntp_config['ntp_sync_interval'])
-        
-        # Initial time sync
-        if ntp_client.sync_time(ntp_config['ntp_server']):
-            logger.info("Initial NTP synchronization successful")
+        if wifi_connected:
+            logger.info("Initializing NTP time synchronization...")
+            from ntp_client import NTPClient
+            dst_region = ntp_config.get('dst_region', 'NONE')
+            ntp_client = NTPClient(logger, ntp_config['timezone_offset'], dst_region)
+            ntp_client.set_sync_interval(ntp_config['ntp_sync_interval'])
+            # Initial time sync
+            if ntp_client.sync_time(ntp_config['ntp_server']):
+                logger.info("Initial NTP synchronization successful")
+            else:
+                logger.warn("Initial NTP synchronization failed, will retry later")
         else:
-            logger.warn("Initial NTP synchronization failed, will retry later")
+            logger.warn("Skipping initial NTP sync: WiFi not connected")
     else:
         logger.info("NTP synchronization disabled")
     
@@ -96,10 +112,8 @@ def main_cycle(config_manager):
     log_stats = logger.get_log_stats()
     logger.debug(f"Logging: {log_stats['level']} level, file: {log_stats['log_file']}")
     
-    # Initialize MQTT client with retries
+    # MQTT setup
     led_blink(2, 0.1)  # Quick blink to indicate MQTT initialization
-    from mqtt_client import SensDotMQTT
-    mqtt = SensDotMQTT(config_manager, logger)
     
     # Try to connect to MQTT with retries
     mqtt_retries = 3
@@ -173,6 +187,8 @@ def main_cycle(config_manager):
                 logger.info("Motion notification sent successfully")
             else:
                 logger.warning("Failed to send motion notification")
+            # Distinct LED pattern for PIR wake: two long pulses
+            led_blink(times=2, delay=0.4)
     
     while True:
         try:
@@ -299,7 +315,8 @@ def main():
     # Check for configuration reset request
     if check_config_reset():
         print("Configuration reset requested")
-        ConfigManager.clear_config()
+        # clear_config is instance method — perform factory reset only when requested
+        ConfigManager().clear_config()
     
     # Initialize configuration manager
     config = ConfigManager()
@@ -311,16 +328,25 @@ def main():
     # Check if device is configured first
     if config.is_configured():
         logger.info("Device is configured, checking for PIR wake-up...")
-        
+
+        # Auto-enable PIR deep sleep if disabled (assumes user expects motion wake behavior)
+        pir_cfg = config.get_pir_config()
+        if not pir_cfg.get('enabled', False):
+            logger.info("PIR currently disabled - enabling with defaults (pin=%s)" % pir_cfg.get('pir_pin'))
+            config.set_pir_config(pir_enabled=True, pir_pin=pir_cfg.get('pir_pin'),
+                                  min_wake_interval=pir_cfg.get('min_wake_interval',300),
+                                  motion_timeout=pir_cfg.get('motion_timeout',30),
+                                  use_deep_sleep=True)
+            pir_cfg = config.get_pir_config()
+            logger.info("PIR enabled")
+
         # Check if device woke from PIR motion - handle early to save power
-        pir_config = config.get_pir_config()
-        if pir_config.get('enabled', False):
+        if pir_cfg.get('enabled', False):
             logger.info("PIR motion detection enabled, checking wake reason...")
             should_continue = check_pir_wake(config, logger)
             if not should_continue:
-                # PIR handler put device back to sleep, this line won't be reached
                 return
-        
+
         logger.info("Starting main cycle")
         main_cycle(config)
     else:
