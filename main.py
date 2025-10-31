@@ -4,7 +4,7 @@
 #
 # GPIO Configuration:
 # TODO: GPIO5 - PIR motion sensor input (configured in pir_wakeup.py)
-# TODO: GPIO6 - External LED output (not yet implemented)
+# External LED: default GPIO10 (configurable). Safe as general-purpose output on ESP32-C3.
 # GPIO8 - Internal LED (current status LED with inverted logic)
 
 import sys
@@ -22,7 +22,7 @@ sys.path.append('lib')
 
 # LED setup for status indication
 # GPIO pins are now configurable through config_manager
-# Default: GPIO8 (internal), GPIO6 (external planned)
+# Default: GPIO8 (internal), GPIO10 (external)
 try:
     config_manager_temp = ConfigManager()
     gpio_config = config_manager_temp.get_gpio_config()
@@ -31,33 +31,79 @@ try:
     LED_AVAILABLE = True
     LED_PIN = gpio_config['status_led_pin']
     print(f"Status LED initialized on GPIO{LED_PIN}")
+
+    # External LED (non-inverted logic; anode->pin via resistor, cathode->GND)
+    EXTERNAL_LED_AVAILABLE = False
+    external_led = None
+    try:
+        ext_pin = gpio_config.get('external_led_pin')
+        if ext_pin is not None:
+            external_led = Pin(ext_pin, Pin.OUT)
+            external_led.off()  # Start OFF (0V)
+            EXTERNAL_LED_AVAILABLE = True
+            print(f"External LED initialized on GPIO{ext_pin}")
+    except Exception as _e:
+        EXTERNAL_LED_AVAILABLE = False
+        print(f"External LED not available: {_e}")
 except Exception as e:
     LED_AVAILABLE = False
     LED_PIN = None
     print(f"LED not available: {e}")
 
 def led_on():
-    """Turn on status LED if available (inverted logic)"""
+    """Turn on LEDs: internal (inverted) + external (normal) if available"""
     if LED_AVAILABLE:
         status_led.off()  # Inverted: off() turns LED ON
+    if 'EXTERNAL_LED_AVAILABLE' in globals() and EXTERNAL_LED_AVAILABLE and external_led:
+        external_led.on()  # Normal: on() turns LED ON
 
 def led_off():
-    """Turn off status LED if available (inverted logic)"""
+    """Turn off LEDs: internal (inverted) + external (normal) if available"""
     if LED_AVAILABLE:
         status_led.on()  # Inverted: on() turns LED OFF
+    if 'EXTERNAL_LED_AVAILABLE' in globals() and EXTERNAL_LED_AVAILABLE and external_led:
+        external_led.off()  # Normal: off() turns LED OFF
 
 def led_blink(times=3, delay=0.2, final_on=True):
-    """Blink status LED if available (inverted logic)
+    """Blink LEDs if available
     final_on: leave LED on at end (default True) else turn it off
     """
-    if LED_AVAILABLE:
-        for _ in range(times):
-            status_led.on()   # Turn LED OFF (inverted)
-            time.sleep(delay)
-            status_led.off()  # Turn LED ON
-            time.sleep(delay)
-        if not final_on:
+    have_int = LED_AVAILABLE
+    have_ext = ('EXTERNAL_LED_AVAILABLE' in globals() and EXTERNAL_LED_AVAILABLE and external_led)
+    if not (have_int or have_ext):
+        return
+    for _ in range(times):
+        if have_int:
+            status_led.on()   # Internal OFF (inverted)
+        if have_ext:
+            external_led.off()  # External OFF (normal)
+        time.sleep(delay)
+        if have_int:
+            status_led.off()  # Internal ON
+        if have_ext:
+            external_led.on()   # External ON
+        time.sleep(delay)
+    if not final_on:
+        if have_int:
             status_led.on()
+        if have_ext:
+            external_led.off()
+
+def _prepare_pir_irq_for_lightsleep(pir_pin, logger=None):
+    """Configure PIR pin IRQ so it can wake from light sleep.
+    On ESP32-C3, Pin.irq can be used to wake from lightsleep.
+    """
+    try:
+        pir = Pin(pir_pin, Pin.IN)
+        # Dummy handler; presence of IRQ enables wake from lightsleep
+        pir.irq(trigger=Pin.IRQ_RISING, handler=lambda p: None)
+        if logger:
+            logger.debug(f"Configured PIR GPIO{pir_pin} IRQ for light sleep wake")
+        return True
+    except Exception as e:
+        if logger:
+            logger.warn(f"Failed to configure PIR IRQ for light sleep: {e}")
+        return False
 
 
 def main_cycle(config_manager):
@@ -246,33 +292,49 @@ def main_cycle(config_manager):
                 sensor_count += 1
                 last_sensor_time = current_time
                     
-                # Check if PIR sleep mode is enabled for power management
+                # Choose sleep mode based on configuration
                 pir_config = config_manager.get_pir_config()
-                if pir_config.get('enabled', False) and pir_config.get('use_deep_sleep', True):
-                    logger.info(f"Enabling PIR deep sleep mode (sleep={sleep_interval}s, PIR pin={pir_config.get('pir_pin')})...")
+                use_deep = pir_config.get('use_deep_sleep', True)
+
+                if use_deep:
+                    # Deep sleep path (default). If PIR enabled, configure PIR wake; otherwise timer only.
                     if mqtt_connected:
                         mqtt.disconnect()  # Clean disconnect
-                    # Correct argument order: sleep_seconds first, then config_manager, logger
-                    enable_pir_sleep(sleep_interval, config_manager, logger)
-                    # Device will wake on motion or timer - this line won't be reached
-                    break
-                else:
-                    # Regular deep sleep mode when PIR disabled
-                    logger.info(f"Entering deep sleep for {sleep_interval} seconds...")
-                    mqtt.disconnect() if mqtt_connected else None  # Clean disconnect before sleep
-                    
+
                     # LED indication before sleep - turn off LED
                     led_off()
-                    time.sleep(0.5)  # Brief pause with LED off to indicate sleep
-                    
-                    # Enable deep sleep
-                    from machine import deepsleep
-                    deepsleep(sleep_interval * 1000)  # Convert to milliseconds
-                    
-                    # This line will never be reached as device restarts after deep sleep
-                    
-                    # Note: After sleep, continue to next sensor reading
-                    # In production, deep sleep would restart the device
+                    time.sleep(0.5)
+
+                    if pir_config.get('enabled', False):
+                        logger.info(f"Deep sleep with PIR wake (sleep={sleep_interval}s, PIR pin={pir_config.get('pir_pin')})")
+                        enable_pir_sleep(sleep_interval, config_manager, logger)
+                        break  # Not reached due to deep sleep
+                    else:
+                        logger.info(f"Entering deep sleep for {sleep_interval} seconds (timer only)...")
+                        from machine import deepsleep
+                        deepsleep(int(sleep_interval * 1000))
+                        break  # Not reached due to deep sleep
+                else:
+                    # Light sleep path (explicitly configured). Optionally wake by PIR IRQ.
+                    logger.info(f"Entering light sleep for {sleep_interval} seconds...")
+                    mqtt.disconnect() if mqtt_connected else None  # Clean disconnect before sleep
+
+                    # LED indication before sleep - turn off LED
+                    led_off()
+                    time.sleep(0.2)
+
+                    # Prepare PIR IRQ (if PIR enabled) to allow wake on motion
+                    if pir_config.get('enabled', False):
+                        _prepare_pir_irq_for_lightsleep(pir_config.get('pir_pin'), logger)
+
+                    try:
+                        import machine
+                        machine.lightsleep(int(sleep_interval * 1000))
+                    except Exception as _se:
+                        logger.warn(f"lightsleep failed ({_se}); falling back to time.sleep")
+                        time.sleep(sleep_interval)
+                    # Execution resumes here after lightsleep timeout or PIR IRQ
+                    led_on()
             else:
                 # Wait a bit before next check
                 time.sleep(1)
@@ -324,24 +386,24 @@ def main():
     # Setup basic logging (will be enhanced once config is loaded)
     logger = setup_logging(config, console_output=True)
     logger.info("SensDot Proto device starting")
-    
-    # Check if device is configured first
+
+    # Check if device is configured
     if config.is_configured():
         logger.info("Device is configured, checking for PIR wake-up...")
 
-        # Auto-enable PIR deep sleep if disabled (assumes user expects motion wake behavior)
+        # Auto-enable PIR with light sleep by default if disabled
         pir_cfg = config.get_pir_config()
         if not pir_cfg.get('enabled', False):
-            logger.info("PIR currently disabled - enabling with defaults (pin=%s)" % pir_cfg.get('pir_pin'))
+            logger.info("PIR currently disabled - enabling with light sleep defaults (pin=%s)" % pir_cfg.get('pir_pin'))
             config.set_pir_config(pir_enabled=True, pir_pin=pir_cfg.get('pir_pin'),
                                   min_wake_interval=pir_cfg.get('min_wake_interval',300),
                                   motion_timeout=pir_cfg.get('motion_timeout',30),
-                                  use_deep_sleep=True)
+                                  use_deep_sleep=False)
             pir_cfg = config.get_pir_config()
-            logger.info("PIR enabled")
+            logger.info("PIR enabled (light sleep mode)")
 
-        # Check if device woke from PIR motion - handle early to save power
-        if pir_cfg.get('enabled', False):
+        # Check if device woke from PIR motion - only for deep sleep mode
+        if pir_cfg.get('enabled', False) and pir_cfg.get('use_deep_sleep', True):
             logger.info("PIR motion detection enabled, checking wake reason...")
             should_continue = check_pir_wake(config, logger)
             if not should_continue:

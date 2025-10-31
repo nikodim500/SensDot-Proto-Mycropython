@@ -115,6 +115,19 @@
 			],
 			"isBackground": false,
 			"group": "none"
+		},
+		{
+			"label": "MPY: Set light sleep",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"exec",
+				"import config_manager as cm;c=cm.ConfigManager();p=c.get_pir_config();c.set_pir_config(pir_enabled=True, pir_pin=p.get('pir_pin',5), min_wake_interval=p.get('min_wake_interval',300), motion_timeout=p.get('motion_timeout',30), use_deep_sleep=False);print('OK use_deep_sleep=False')"
+			],
+			"isBackground": false,
+			"group": "none"
 		}
 	]
 }

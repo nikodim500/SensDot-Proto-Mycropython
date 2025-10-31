@@ -184,12 +184,12 @@ class ConfigManager:
         }
         return self._save_config()
     
-    def set_gpio_config(self, status_led_pin=8, external_led_pin=6, pir_pin=5, 
+    def set_gpio_config(self, status_led_pin=8, external_led_pin=10, pir_pin=5, 
                        i2c_sda_pin=4, i2c_scl_pin=3, spi_mosi_pin=7, spi_miso_pin=2, spi_sck_pin=10):
         """Set GPIO pin configuration"""
         self.config['gpio'] = {
             'status_led_pin': status_led_pin,      # Internal status LED (GPIO8 on ESP32-C3 SuperMini)
-            'external_led_pin': external_led_pin,  # External LED for status indication
+            'external_led_pin': external_led_pin,  # External LED for status indication (default GPIO10)
             'pir_pin': pir_pin,                    # PIR motion sensor input
             'i2c_sda_pin': i2c_sda_pin,           # I2C SDA pin for sensors
             'i2c_scl_pin': i2c_scl_pin,           # I2C SCL pin for sensors
@@ -203,7 +203,7 @@ class ConfigManager:
         """Get GPIO pin configuration"""
         default_gpio = {
             'status_led_pin': 8,      # GPIO8 - Internal LED on ESP32-C3 SuperMini
-            'external_led_pin': 6,    # GPIO6 - External LED for status indication
+            'external_led_pin': 10,   # GPIO10 - External LED for status indication (safe general-purpose output)
             'pir_pin': 5,             # GPIO5 - PIR motion sensor input
             'i2c_sda_pin': 4,         # GPIO4 - I2C SDA pin
             'i2c_scl_pin': 3,         # GPIO3 - I2C SCL pin
