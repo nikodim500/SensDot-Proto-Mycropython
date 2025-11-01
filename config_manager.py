@@ -215,6 +215,50 @@ class ConfigManager:
             'spi_sck_pin': 10         # GPIO10 - SPI SCK pin
         }
         return self.config.get('gpio', default_gpio)
+
+    # ----- Button developer configuration -----
+    def set_button_config(self, button_pin=9, active_low=True, short_hold_s=5, long_hold_s=20, debounce_ms=50, allow_deepsleep_wake=False):
+        """Set button configuration (developer-oriented; not exposed in portal).
+        button_pin: GPIO for the user button
+        active_low: True if pressed=LOW
+        short_hold_s: seconds to trigger STA portal
+        long_hold_s: seconds to trigger factory reset + AP
+        debounce_ms: debounce interval in milliseconds
+        allow_deepsleep_wake: whether to arm deep sleep wake on this pin when possible
+        """
+        self.config['button'] = {
+            'button_pin': button_pin,
+            'active_low': bool(active_low),
+            'short_hold_s': int(short_hold_s),
+            'long_hold_s': int(long_hold_s),
+            'debounce_ms': int(debounce_ms),
+            'allow_deepsleep_wake': bool(allow_deepsleep_wake)
+        }
+        return self._save_config()
+
+    def get_button_config(self):
+        """Get button configuration with safe defaults.
+        Defaults match current board routing (GPIO9 with pull-up, active low).
+        Deep sleep wake is off by default to avoid conflicts until explicitly enabled.
+        """
+        defaults = {
+            'button_pin': 9,
+            'active_low': True,
+            'short_hold_s': 5,
+            'long_hold_s': 20,
+            'debounce_ms': 50,
+            'allow_deepsleep_wake': False
+        }
+        data = self.config.get('button', {})
+        # Fill defaults for missing keys
+        for k, v in defaults.items():
+            if k not in data:
+                data[k] = v
+        # Persist back if not present previously
+        if 'button' not in self.config:
+            self.config['button'] = data
+            self._save_config()
+        return data
     
     def get_pir_config(self):
         """Get PIR configuration with GPIO pin from GPIO config"""

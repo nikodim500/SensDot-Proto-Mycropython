@@ -16,6 +16,7 @@ from wifi_config import WiFiConfigServer
 from logger import setup_logging, get_logger
 from pir_wakeup import check_pir_wake, enable_pir_sleep
 from indication import IndicationManager
+from button import ButtonManager
 
 # Add lib directory to path for sensor libraries (when needed)
 sys.path.append('/lib')
@@ -40,6 +41,15 @@ def _prepare_pir_irq_for_lightsleep(pir_pin, logger=None):
         return False
 
 
+CONFIG_MODE_REQUEST = False
+CONFIG_MODE_DURATION = 600
+
+def _request_config_mode(duration_s=600):
+    global CONFIG_MODE_REQUEST, CONFIG_MODE_DURATION
+    CONFIG_MODE_REQUEST = True
+    CONFIG_MODE_DURATION = int(duration_s or 600)
+
+
 def main_cycle(config_manager, indicator):
     """Main device cycle - runs after successful configuration"""
     # Setup logging system
@@ -62,6 +72,25 @@ def main_cycle(config_manager, indicator):
     # Bring up WiFi before any network tasks (NTP/MQTT)
     from mqtt_client import SensDotMQTT
     mqtt = SensDotMQTT(config_manager, logger)
+    # Register command handler to request STA config portal via MQTT
+    def _on_command(cmd):
+        try:
+            if isinstance(cmd, dict) and cmd.get('type') == 'config_mode':
+                dur = int(cmd.get('duration') or 600)
+                _request_config_mode(dur)
+                try:
+                    logger.info("MQTT: config_mode requested (duration {}s)".format(dur))
+                except:
+                    pass
+        except Exception as _ce:
+            try:
+                logger.warn("on_command error: {}".format(_ce))
+            except:
+                pass
+    try:
+        mqtt.set_on_command(_on_command)
+    except Exception:
+        pass
     wifi_connected = mqtt.connect_wifi()
     if not wifi_connected:
         logger.error("WiFi not connected; starting AP for reconfiguration")
@@ -187,6 +216,23 @@ def main_cycle(config_manager, indicator):
                 ntp_client.auto_sync_if_needed()
                 last_ntp_check = current_time
             
+            # If config mode was requested, open STA portal (no AP)
+            if CONFIG_MODE_REQUEST:
+                try:
+                    logger.info("Opening STA config portal (no AP)...")
+                except:
+                    pass
+                try:
+                    wifi_config = WiFiConfigServer(config_manager, logger)
+                    wifi_config.start_config_server_sta(timeout_s=CONFIG_MODE_DURATION)
+                except Exception as _cs:
+                    try:
+                        logger.warn("STA portal failed: {}".format(_cs))
+                    except:
+                        pass
+                # Clear request and continue normal loop
+                _request_config_mode(0)
+
             # Read sensors at specified interval
             if current_time - last_sensor_time >= sensor_interval:
                 logger.debug(f"Sensor reading #{sensor_count}")
@@ -279,41 +325,19 @@ def main_cycle(config_manager, indicator):
             logger.exception(f"Main cycle error: {e}")
             time.sleep(5)  # Wait before retrying
 
-def check_config_reset(logger=None):
-    """Check if configuration should be reset via button press"""
-    from machine import Pin
-    
-    # GPIO pin for reset button (adjust as needed for your hardware)
-    # Using GPIO9 (available on ESP32-C3 SuperMini)
-    reset_button = Pin(9, Pin.IN, Pin.PULL_UP)
-    
-    # Check if button is pressed (LOW when pressed due to pull-up)
-    if not reset_button.value():
-        if logger:
-            logger.info("Reset button pressed, checking for hold...")
-        else:
-            print("Reset button pressed, checking for hold...")
-        
-        # Require button hold for 3 seconds to prevent accidental reset
-        import time
-        hold_time = 0
-        while not reset_button.value() and hold_time < 3:
-            time.sleep(0.1)
-            hold_time += 0.1
-        
-        if hold_time >= 2.9:  # Allow small tolerance
+def check_config_reset(logger=None, config=None):
+    """Use ButtonManager to classify hold at boot."""
+    try:
+        bm = ButtonManager(config, logger)
+        bm.setup()
+        return bm.check_hold_on_boot(max_wait_s=25)
+    except Exception as e:
+        try:
             if logger:
-                logger.info("Reset button held for 3 seconds - configuration will be reset")
-            else:
-                print("Reset button held for 3 seconds - configuration will be reset")
-            return True
-        else:
-            if logger:
-                logger.info("Reset button not held long enough")
-            else:
-                print("Reset button not held long enough")
-    
-    return False
+                logger.debug("Button check failed: {}".format(e))
+        except:
+            pass
+        return None
 
 def main():
     """Device entry point"""
@@ -355,15 +379,21 @@ def main():
         except:
             pass
     
-    # Check for configuration reset request
-    if check_config_reset(logger):
-        logger.info("Configuration reset requested")
-        # clear_config is instance method — perform factory reset only when requested
+    # Check for button actions
+    act = check_config_reset(logger, config)
+    if act == 'factory_reset':
+        logger.info("Factory reset requested via button")
         config.clear_config()
-        # Re-initialize logger after reset in case settings changed
         config = ConfigManager()
         logger = setup_logging(config, console_output=True)
-        logger.info("Configuration cleared; continuing with AP setup if needed")
+        logger.info("Configuration cleared; starting AP for configuration")
+        wifi_config = WiFiConfigServer(config, logger)
+        wifi_config.start_config_server()
+        return
+    elif act == 'config_sta':
+        logger.info("Starting STA config portal via button")
+        wifi_config = WiFiConfigServer(config, logger)
+        wifi_config.start_config_server_sta(timeout_s=600)
 
     # Check if device is configured
     if config.is_configured():
