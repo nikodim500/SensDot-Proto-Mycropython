@@ -128,6 +128,89 @@
 			],
 			"isBackground": false,
 			"group": "none"
+		},
+		{
+			"label": "MPY: Copy main.py",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\main.py",
+				":main.py"
+			],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Copy main.py (high-Z)",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\main.py",
+				":main.py"
+			],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Copy main.py (REPL-friendly sleep + high-Z)",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\main.py",
+				":main.py"
+			],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Copy main.py (halt.flag support)",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\main.py",
+				":main.py"
+			],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Copy main.py (high-Z and active-high safe)",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\main.py",
+				":main.py"
+			],
+			"group": "none"
+		},
+		{
+			"label": "MPY: Copy config_manager.py",
+			"type": "shell",
+			"command": "mpremote",
+			"args": [
+				"connect",
+				"port:COM3",
+				"fs",
+				"cp",
+				"c:\\Projects\\SensDot\\SensDot Proto Mycropython\\config_manager.py",
+				":config_manager.py"
+			]
 		}
 	]
 }

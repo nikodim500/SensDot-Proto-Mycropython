@@ -15,79 +15,13 @@ from config_manager import ConfigManager
 from wifi_config import WiFiConfigServer
 from logger import setup_logging, get_logger
 from pir_wakeup import check_pir_wake, enable_pir_sleep
+from indication import IndicationManager
 
 # Add lib directory to path for sensor libraries (when needed)
 sys.path.append('/lib')
 sys.path.append('lib')
 
-# LED setup for status indication
-# GPIO pins are now configurable through config_manager
-# Default: GPIO8 (internal), GPIO10 (external)
-try:
-    config_manager_temp = ConfigManager()
-    gpio_config = config_manager_temp.get_gpio_config()
-    status_led = Pin(gpio_config['status_led_pin'], Pin.OUT)
-    status_led.on()  # Turn on LED when device starts
-    LED_AVAILABLE = True
-    LED_PIN = gpio_config['status_led_pin']
-    print(f"Status LED initialized on GPIO{LED_PIN}")
-
-    # External LED (non-inverted logic; anode->pin via resistor, cathode->GND)
-    EXTERNAL_LED_AVAILABLE = False
-    external_led = None
-    try:
-        ext_pin = gpio_config.get('external_led_pin')
-        if ext_pin is not None:
-            external_led = Pin(ext_pin, Pin.OUT)
-            external_led.off()  # Start OFF (0V)
-            EXTERNAL_LED_AVAILABLE = True
-            print(f"External LED initialized on GPIO{ext_pin}")
-    except Exception as _e:
-        EXTERNAL_LED_AVAILABLE = False
-        print(f"External LED not available: {_e}")
-except Exception as e:
-    LED_AVAILABLE = False
-    LED_PIN = None
-    print(f"LED not available: {e}")
-
-def led_on():
-    """Turn on LEDs: internal (inverted) + external (normal) if available"""
-    if LED_AVAILABLE:
-        status_led.off()  # Inverted: off() turns LED ON
-    if 'EXTERNAL_LED_AVAILABLE' in globals() and EXTERNAL_LED_AVAILABLE and external_led:
-        external_led.on()  # Normal: on() turns LED ON
-
-def led_off():
-    """Turn off LEDs: internal (inverted) + external (normal) if available"""
-    if LED_AVAILABLE:
-        status_led.on()  # Inverted: on() turns LED OFF
-    if 'EXTERNAL_LED_AVAILABLE' in globals() and EXTERNAL_LED_AVAILABLE and external_led:
-        external_led.off()  # Normal: off() turns LED OFF
-
-def led_blink(times=3, delay=0.2, final_on=True):
-    """Blink LEDs if available
-    final_on: leave LED on at end (default True) else turn it off
-    """
-    have_int = LED_AVAILABLE
-    have_ext = ('EXTERNAL_LED_AVAILABLE' in globals() and EXTERNAL_LED_AVAILABLE and external_led)
-    if not (have_int or have_ext):
-        return
-    for _ in range(times):
-        if have_int:
-            status_led.on()   # Internal OFF (inverted)
-        if have_ext:
-            external_led.off()  # External OFF (normal)
-        time.sleep(delay)
-        if have_int:
-            status_led.off()  # Internal ON
-        if have_ext:
-            external_led.on()   # External ON
-        time.sleep(delay)
-    if not final_on:
-        if have_int:
-            status_led.on()
-        if have_ext:
-            external_led.off()
+# All LED handling moved to indication.py
 
 def _prepare_pir_irq_for_lightsleep(pir_pin, logger=None):
     """Configure PIR pin IRQ so it can wake from light sleep.
@@ -106,7 +40,7 @@ def _prepare_pir_irq_for_lightsleep(pir_pin, logger=None):
         return False
 
 
-def main_cycle(config_manager):
+def main_cycle(config_manager, indicator):
     """Main device cycle - runs after successful configuration"""
     # Setup logging system
     logger = setup_logging(config_manager, console_output=True)
@@ -159,7 +93,7 @@ def main_cycle(config_manager):
     logger.debug(f"Logging: {log_stats['level']} level, file: {log_stats['log_file']}")
     
     # MQTT setup
-    led_blink(2, 0.1)  # Quick blink to indicate MQTT initialization
+    indicator.blink(2, 0.1)  # Quick blink to indicate MQTT initialization
     
     # Try to connect to MQTT with retries
     mqtt_retries = 3
@@ -184,7 +118,7 @@ def main_cycle(config_manager):
         # User can reconfigure if needed via reset button
     else:
         logger.info("MQTT connected successfully")
-        led_blink(1, 0.5)  # Single long blink for successful MQTT connection
+        indicator.blink(1, 0.5)  # Single long blink for successful MQTT connection
         
         # Publish MQTT Discovery configuration for Home Assistant (if enabled)
         advanced_config = config_manager.get_advanced_config()
@@ -212,7 +146,7 @@ def main_cycle(config_manager):
     logger.info("Starting main sensor monitoring cycle...")
     
     # Turn on LED to indicate active monitoring mode
-    led_on()
+    indicator.on()
     
     # Check for motion wake notification (only if PIR is enabled and we actually woke from PIR)
     device_id = config_manager.get_device_id()
@@ -220,7 +154,7 @@ def main_cycle(config_manager):
     
     # Only check PIR wake if PIR is enabled and deep sleep is being used
     if pir_config.get('enabled', False) and pir_config.get('use_deep_sleep', True):
-        was_motion_wake = check_pir_wake()
+        was_motion_wake = check_pir_wake(config_manager, logger)
         if was_motion_wake and mqtt_connected:
             logger.info("Sending motion detection notification...")
             motion_data = {
@@ -234,14 +168,14 @@ def main_cycle(config_manager):
             else:
                 logger.warning("Failed to send motion notification")
             # Distinct LED pattern for PIR wake: two long pulses
-            led_blink(times=2, delay=0.4)
+            indicator.blink(times=2, delay=0.4)
     
     while True:
         try:
             current_time = time.time()
             
             # Keep LED ON while waiting for sensor interval
-            led_on()
+            indicator.on()
             
             # Check for incoming MQTT messages (only if connected)
             if mqtt_connected:
@@ -256,7 +190,7 @@ def main_cycle(config_manager):
             # Read sensors at specified interval
             if current_time - last_sensor_time >= sensor_interval:
                 logger.debug(f"Sensor reading #{sensor_count}")
-                led_blink(3, 0.1)  # Triple quick blink for sensor reading
+                indicator.blink(3, 0.1)  # Triple quick blink for sensor reading
                 # LED will be ON after blinking (led_blink ends with LED on)
                 
                 # TODO: Read actual sensors here
@@ -302,7 +236,7 @@ def main_cycle(config_manager):
                         mqtt.disconnect()  # Clean disconnect
 
                     # LED indication before sleep - turn off LED
-                    led_off()
+                    indicator.off()
                     time.sleep(0.5)
 
                     if pir_config.get('enabled', False):
@@ -320,7 +254,7 @@ def main_cycle(config_manager):
                     mqtt.disconnect() if mqtt_connected else None  # Clean disconnect before sleep
 
                     # LED indication before sleep - turn off LED
-                    led_off()
+                    indicator.off()
                     time.sleep(0.2)
 
                     # Prepare PIR IRQ (if PIR enabled) to allow wake on motion
@@ -329,12 +263,14 @@ def main_cycle(config_manager):
 
                     try:
                         import machine
-                        machine.lightsleep(int(sleep_interval * 1000))
+                        # Use regular sleep to keep REPL responsive instead of lightsleep
+                        import time as _t
+                        _t.sleep(int(sleep_interval))
                     except Exception as _se:
                         logger.warn(f"lightsleep failed ({_se}); falling back to time.sleep")
                         time.sleep(sleep_interval)
                     # Execution resumes here after lightsleep timeout or PIR IRQ
-                    led_on()
+                    indicator.on()
             else:
                 # Wait a bit before next check
                 time.sleep(1)
@@ -343,7 +279,7 @@ def main_cycle(config_manager):
             logger.exception(f"Main cycle error: {e}")
             time.sleep(5)  # Wait before retrying
 
-def check_config_reset():
+def check_config_reset(logger=None):
     """Check if configuration should be reset via button press"""
     from machine import Pin
     
@@ -353,7 +289,10 @@ def check_config_reset():
     
     # Check if button is pressed (LOW when pressed due to pull-up)
     if not reset_button.value():
-        print("Reset button pressed, checking for hold...")
+        if logger:
+            logger.info("Reset button pressed, checking for hold...")
+        else:
+            print("Reset button pressed, checking for hold...")
         
         # Require button hold for 3 seconds to prevent accidental reset
         import time
@@ -363,29 +302,68 @@ def check_config_reset():
             hold_time += 0.1
         
         if hold_time >= 2.9:  # Allow small tolerance
-            print("Reset button held for 3 seconds - configuration will be reset")
+            if logger:
+                logger.info("Reset button held for 3 seconds - configuration will be reset")
+            else:
+                print("Reset button held for 3 seconds - configuration will be reset")
             return True
         else:
-            print("Reset button not held long enough")
+            if logger:
+                logger.info("Reset button not held long enough")
+            else:
+                print("Reset button not held long enough")
     
     return False
 
 def main():
     """Device entry point"""
-    print("SensDot Proto starting...")
+    # Initialize configuration manager and logging first for consistent timestamps
+    config = ConfigManager()
+    logger = setup_logging(config, console_output=True)
+    logger.info("SensDot Proto starting...")
+    # Prepare indicator early
+    indicator = IndicationManager(config, logger)
+    indicator.setup()
+    # Optional halt mechanism: if a flag file exists, do not start main cycle
+    try:
+        import os
+        if 'halt.flag' in os.listdir():
+            try:
+                indicator.ensure_external_safe_off()
+            except Exception:
+                pass
+            try:
+                logger.warn("HALT flag present - skipping main cycle and staying in REPL")
+            except:
+                pass
+            return
+    except Exception as _fe:
+        try:
+            logger.debug("Halt flag check failed: {}".format(_fe))
+        except:
+            pass
+    # Log external LED flag for visibility
+    try:
+        gpio_cfg = config.get_gpio_config()
+        logger.info("External LED flag: {} (pin={})".format(
+            'ENABLED' if gpio_cfg.get('external_led_enabled', True) else 'DISABLED',
+            gpio_cfg.get('external_led_pin', 'n/a')
+        ))
+    except Exception as _elog:
+        try:
+            logger.warn("External LED flag log failed: {}".format(_elog))
+        except:
+            pass
     
     # Check for configuration reset request
-    if check_config_reset():
-        print("Configuration reset requested")
+    if check_config_reset(logger):
+        logger.info("Configuration reset requested")
         # clear_config is instance method — perform factory reset only when requested
-        ConfigManager().clear_config()
-    
-    # Initialize configuration manager
-    config = ConfigManager()
-    
-    # Setup basic logging (will be enhanced once config is loaded)
-    logger = setup_logging(config, console_output=True)
-    logger.info("SensDot Proto device starting")
+        config.clear_config()
+        # Re-initialize logger after reset in case settings changed
+        config = ConfigManager()
+        logger = setup_logging(config, console_output=True)
+        logger.info("Configuration cleared; continuing with AP setup if needed")
 
     # Check if device is configured
     if config.is_configured():
@@ -410,7 +388,7 @@ def main():
                 return
 
         logger.info("Starting main cycle")
-        main_cycle(config)
+        main_cycle(config, indicator)
     else:
         logger.info("Device not configured, starting WiFi AP for configuration")
         wifi_config = WiFiConfigServer(config, logger)
